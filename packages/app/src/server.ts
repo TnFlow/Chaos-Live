@@ -19,10 +19,19 @@ export interface ConnectedClient {
   connectedAt: number;
 }
 
+export interface ModActionResult {
+  correlationId: string;
+  success: boolean;
+  durationMs: number;
+  response?: string;
+  error?: string;
+}
+
 export interface WebSocketHubConfig {
   port: number;
   staticDir?: string;
   onClientConnected?: (socket: WebSocket, client: ConnectedClient) => void;
+  onModActionResult?: (result: ModActionResult) => void;
 }
 
 /**
@@ -36,6 +45,7 @@ export class WebSocketHub {
   public readonly port: number;
   private readonly staticDir: string;
   private readonly onClientConnected?: (socket: WebSocket, client: ConnectedClient) => void;
+  private readonly onModActionResult?: (result: ModActionResult) => void;
 
   private server?: http.Server;
   private wss?: WebSocketServer;
@@ -44,6 +54,7 @@ export class WebSocketHub {
   constructor(config: WebSocketHubConfig) {
     this.port = config.port;
     this.onClientConnected = config.onClientConnected;
+    this.onModActionResult = config.onModActionResult;
 
     const possiblePaths = [
       config.staticDir,
@@ -153,6 +164,22 @@ export class WebSocketHub {
     });
   }
 
+  /**
+   * Dispatches a GameAction to connected Fabric mod clients.
+   * Returns true if successfully queued to at least one mod.
+   */
+  public sendActionToMod(action: GameAction): boolean {
+    if (!this.isModConnected()) {
+      return false;
+    }
+    this.broadcastToMod('GAME_ACTION', action);
+    return true;
+  }
+
+  public isModConnected(): boolean {
+    return this.getConnectedCount('mod') > 0;
+  }
+
   public getConnectedCount(clientType?: ClientType): number {
     if (!clientType) return this.clients.size;
     let count = 0;
@@ -222,6 +249,16 @@ export class WebSocketHub {
             { clientType: clientInfo.clientType, version: msg.protocolVersion },
             'Client negotiated handshake',
           );
+        } else if (msg.type === 'ACTION_RESULT') {
+          logger.info(
+            {
+              correlationId: msg.correlationId,
+              success: msg.success,
+              durationMs: msg.durationMs,
+            },
+            '📥 Received action result ACK from Fabric mod',
+          );
+          this.onModActionResult?.(msg);
         }
       } catch {
         // Ignore unparseable message

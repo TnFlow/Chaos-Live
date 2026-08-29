@@ -13,6 +13,7 @@ import { RconAdapter } from '@chaos-live/adapter-minecraft-rcon';
 import type { GameAction, ActionResult, ChaosEvent } from '@chaos-live/shared-protocol';
 import { loadConfig } from './config/config.js';
 import { WebSocketHub } from './server.js';
+import { HybridGameAdapter } from './adapters/hybrid-game-adapter.js';
 import { logger } from './logger.js';
 
 /**
@@ -79,60 +80,6 @@ async function bootstrap(): Promise<void> {
     },
   });
 
-  // Determine game adapter: Minecraft RCON or Console Fallback
-  let gameAdapter: GameAdapter;
-
-  if (config.rconEnabled && config.rconPassword) {
-    logger.info(
-      { host: config.rconHost, port: config.rconPort },
-      `🕹️  Game Target: MINECRAFT RCON (connecting to ${config.rconHost}:${config.rconPort})...`,
-    );
-
-    const rcon = new RconAdapter({
-      host: config.rconHost,
-      port: config.rconPort,
-      password: config.rconPassword,
-      timeoutMs: 5000,
-      retry: { maxAttempts: 2, delayMs: 1000 },
-    });
-
-    try {
-      await rcon.connect();
-      logger.info('✅ Connected to Minecraft RCON server successfully.');
-      gameAdapter = rcon;
-    } catch (err) {
-      logger.warn(
-        { err: err instanceof Error ? err.message : String(err) },
-        '⚠️  Could not connect to Minecraft RCON server. Falling back to Console Game Adapter.',
-      );
-      gameAdapter = new ConsoleGameAdapter();
-    }
-  } else {
-    logger.info('🕹️  Game Target: CONSOLE (RCON not configured or disabled).');
-    gameAdapter = new ConsoleGameAdapter();
-  }
-
-  let platformAdapter: TikTokAdapter | MockAdapter;
-  if (config.useMock) {
-    logger.info(
-      { intervalMs: config.mockIntervalMs },
-      '🚀 Mode: MOCK (synthetic event stream generator active)',
-    );
-    platformAdapter = new MockAdapter({
-      autoStreamIntervalMs: config.mockIntervalMs,
-    });
-  } else {
-    logger.info(
-      { username: config.tiktokUsername },
-      `🔴 Mode: LIVE TIKTOK (connecting to @${config.tiktokUsername})`,
-    );
-    platformAdapter = new TikTokAdapter({
-      uniqueId: config.tiktokUsername,
-      reconnect: { enabled: true, maxAttempts: 10 },
-      circuitBreaker: { failureThreshold: 5, resetTimeoutMs: 30000 },
-    });
-  }
-
   // Initialize community goals engine
   const goalEngine = new GoalEngine([
     {
@@ -160,19 +107,73 @@ async function bootstrap(): Promise<void> {
   // Cache recent events in-memory to pair with action results for database persistence
   const recentEvents = new Map<string, ChaosEvent>();
 
-  // Initialize WebSocket Hub for OBS Overlay and future mod
+  // Declare hybrid game adapter reference
+  let hybridAdapter: HybridGameAdapter;
+
+  // Initialize WebSocket Hub for OBS Overlay and Fabric Mod
   const wsHub = new WebSocketHub({
     port: config.wsPort,
-    onClientConnected: (socket) => {
-      // Immediately send active goals to newly connected overlay clients
-      socket.send(
-        JSON.stringify({
-          type: 'INITIAL_GOALS',
-          payload: goalEngine.getGoals(),
-        }),
-      );
+    onClientConnected: (socket, client) => {
+      if (client.clientType === 'overlay') {
+        socket.send(
+          JSON.stringify({
+            type: 'INITIAL_GOALS',
+            payload: goalEngine.getGoals(),
+          }),
+        );
+      }
+    },
+    onModActionResult: (result) => {
+      hybridAdapter?.handleModActionResult(result);
     },
   });
+
+  // Setup game adapters: Fabric Mod (primary via WS) -> Minecraft RCON (secondary) -> Console (fallback)
+  let rcon: GameAdapter | undefined;
+  if (config.rconEnabled && config.rconPassword) {
+    rcon = new RconAdapter({
+      host: config.rconHost,
+      port: config.rconPort,
+      password: config.rconPassword,
+      timeoutMs: 5000,
+      retry: { maxAttempts: 2, delayMs: 1000 },
+    });
+    try {
+      await rcon.connect();
+      logger.info('✅ Connected to Minecraft RCON server as secondary fallback.');
+    } catch {
+      logger.warn('⚠️  Minecraft RCON server is offline. Standby mode active.');
+    }
+  }
+
+  const consoleFallback = new ConsoleGameAdapter();
+  hybridAdapter = new HybridGameAdapter({
+    wsHub,
+    rconAdapter: rcon,
+    fallbackAdapter: consoleFallback,
+  });
+  const gameAdapter: GameAdapter = hybridAdapter;
+
+  let platformAdapter: TikTokAdapter | MockAdapter;
+  if (config.useMock) {
+    logger.info(
+      { intervalMs: config.mockIntervalMs },
+      '🚀 Mode: MOCK (synthetic event stream generator active)',
+    );
+    platformAdapter = new MockAdapter({
+      autoStreamIntervalMs: config.mockIntervalMs,
+    });
+  } else {
+    logger.info(
+      { username: config.tiktokUsername },
+      `🔴 Mode: LIVE TIKTOK (connecting to @${config.tiktokUsername})`,
+    );
+    platformAdapter = new TikTokAdapter({
+      uniqueId: config.tiktokUsername,
+      reconnect: { enabled: true, maxAttempts: 10 },
+      circuitBreaker: { failureThreshold: 5, resetTimeoutMs: 30000 },
+    });
+  }
 
   platformAdapter.onEvent((event) => {
     recentEvents.set(event.id, event);
