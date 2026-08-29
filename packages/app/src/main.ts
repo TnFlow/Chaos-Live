@@ -3,6 +3,7 @@ import {
   EventEngine,
   InMemoryPriorityQueue,
   RuleEvaluator,
+  GoalEngine,
   recordProcessedEvent,
   closePrismaClient,
 } from '@chaos-live/core';
@@ -132,16 +133,72 @@ async function bootstrap(): Promise<void> {
     });
   }
 
+  // Initialize community goals engine
+  const goalEngine = new GoalEngine([
+    {
+      id: 'goal-roses-50',
+      name: '🌹 50 Roses ➜ Summon Warden',
+      eventType: 'gift',
+      giftName: 'Rose',
+      targetValue: 50,
+      actionCommand: 'summon warden ~ ~ ~ {CustomName:\'"COMMUNITY BOSS: WARDEN"\'}',
+      repeatable: true,
+    },
+    {
+      id: 'goal-likes-150',
+      name: '❤️ 150 Likes ➜ Diamond Party',
+      eventType: 'like',
+      targetValue: 150,
+      actionCommand: 'give @a minecraft:diamond 5',
+      repeatable: true,
+    },
+  ]);
+
+  // Load persistent goals from SQLite
+  await goalEngine.initFromDatabase();
+
   // Cache recent events in-memory to pair with action results for database persistence
   const recentEvents = new Map<string, ChaosEvent>();
 
   // Initialize WebSocket Hub for OBS Overlay and future mod
-  const wsHub = new WebSocketHub({ port: config.wsPort });
+  const wsHub = new WebSocketHub({
+    port: config.wsPort,
+    onClientConnected: (socket) => {
+      // Immediately send active goals to newly connected overlay clients
+      socket.send(
+        JSON.stringify({
+          type: 'INITIAL_GOALS',
+          payload: goalEngine.getGoals(),
+        }),
+      );
+    },
+  });
 
   platformAdapter.onEvent((event) => {
     recentEvents.set(event.id, event);
     // Broadcast raw stream event to overlay
     wsHub.broadcastEvent(event);
+
+    // Evaluate community goals
+    void (async () => {
+      const updates = await goalEngine.processEvent(event);
+      for (const update of updates) {
+        wsHub.broadcastToOverlay('GOAL_PROGRESS', update);
+        if (update.triggeredAction) {
+          logger.info(
+            { goalName: update.name, command: update.triggeredAction.command },
+            `🎉 [GOAL COMPLETED] Triggering reward: "${update.triggeredAction.command}"`,
+          );
+          wsHub.broadcastToOverlay('GOAL_COMPLETED', update);
+          // Enqueue with elevated priority so the community reward executes promptly
+          queue.enqueue({
+            action: update.triggeredAction,
+            score: 200,
+            enqueuedAt: Date.now(),
+          });
+        }
+      }
+    })();
 
     // Keep cache bounded
     if (recentEvents.size > 500) {

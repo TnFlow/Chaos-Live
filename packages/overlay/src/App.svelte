@@ -41,6 +41,16 @@
     timestamp: number;
   }
 
+  interface GoalItem {
+    id: string;
+    name: string;
+    eventType: string;
+    targetValue: number;
+    currentValue: number;
+    percent: number;
+    completed?: boolean;
+  }
+
   // State
   let isConnected = $state(false);
   let totalEventsReceived = $state(0);
@@ -50,6 +60,30 @@
   let recentActions = $state<ActionItem[]>([]);
   let showControls = $state(false);
 
+  // Goals state
+  let goals = $state<GoalItem[]>([
+    {
+      id: 'goal-roses-50',
+      name: '🌹 50 Roses ➜ Summon Warden',
+      eventType: 'gift',
+      targetValue: 50,
+      currentValue: 12,
+      percent: 24,
+      completed: false,
+    },
+    {
+      id: 'goal-likes-150',
+      name: '❤️ 150 Likes ➜ Diamond Shower',
+      eventType: 'like',
+      targetValue: 150,
+      currentValue: 45,
+      percent: 30,
+      completed: false,
+    },
+  ]);
+
+  let celebratingGoal = $state<GoalItem | null>(null);
+  let celebrationTimeout: any = null;
   let alertTimeout: any = null;
 
   function formatTime(ts: number): string {
@@ -67,10 +101,66 @@
     }, 4500);
   }
 
+  function triggerCelebration(goal: GoalItem) {
+    if (celebrationTimeout) {
+      clearTimeout(celebrationTimeout);
+    }
+    celebratingGoal = goal;
+    celebrationTimeout = setTimeout(() => {
+      celebratingGoal = null;
+    }, 5500);
+  }
+
   function handleIncomingPacket(packet: any) {
     if (!packet || !packet.type) return;
 
-    if (packet.type === 'CHAOS_EVENT') {
+    if (packet.type === 'INITIAL_GOALS') {
+      if (Array.isArray(packet.payload) && packet.payload.length > 0) {
+        goals = packet.payload.map((g: any) => ({
+          id: g.id,
+          name: g.name,
+          eventType: g.eventType,
+          targetValue: g.targetValue,
+          currentValue: g.currentValue ?? 0,
+          percent: Math.min(100, Math.round(((g.currentValue ?? 0) / g.targetValue) * 100)),
+          completed: g.completed ?? false,
+        }));
+      }
+    } else if (packet.type === 'GOAL_PROGRESS') {
+      const update = packet.payload;
+      const targetId = update.goalId || update.id;
+      const idx = goals.findIndex((g) => g.id === targetId);
+
+      if (idx >= 0) {
+        goals[idx] = {
+          ...goals[idx]!,
+          currentValue: update.currentValue,
+          percent: update.percent,
+          completed: update.completed,
+        };
+      } else {
+        goals.push({
+          id: targetId,
+          name: update.name,
+          eventType: update.eventType,
+          targetValue: update.targetValue,
+          currentValue: update.currentValue,
+          percent: update.percent,
+          completed: update.completed,
+        });
+      }
+    } else if (packet.type === 'GOAL_COMPLETED') {
+      const update = packet.payload;
+      triggerCelebration({
+        id: update.goalId || update.id,
+        name: update.name,
+        eventType: update.eventType,
+        targetValue: update.targetValue,
+        currentValue: update.targetValue,
+        percent: 100,
+        completed: true,
+      });
+    } else if (packet.type === 'CHAOS_EVENT') {
       const event = packet.payload;
       totalEventsReceived++;
 
@@ -218,6 +308,18 @@
     });
   }
 
+  function testCompleteGoal() {
+    const goal = goals[0] || {
+      id: 'g-test',
+      name: '🌹 50 Roses ➜ Summon Warden',
+      eventType: 'gift',
+      targetValue: 50,
+      currentValue: 50,
+      percent: 100,
+    };
+    triggerCelebration(goal);
+  }
+
   onMount(() => {
     // Check url params for ?preview=1
     const params = new URLSearchParams(window.location.search);
@@ -279,6 +381,29 @@
       <span class="indicator-dot {isConnected ? 'connected' : 'disconnected'}"></span>
       <span class="status-text">{isConnected ? 'LIVE OVERLAY' : 'CONNECTING...'}</span>
     </div>
+
+    <!-- Community Goal Progress Bar (Centered in header) -->
+    {#if goals.length > 0}
+      {@const activeGoal = goals[0]}
+      <div class="goal-widget" id="active-goal-widget">
+        <div class="goal-label-row">
+          <span class="goal-name">{activeGoal?.name}</span>
+          <span class="goal-counts">
+            <strong>{activeGoal?.currentValue}</strong> / {activeGoal?.targetValue}
+            <span class="goal-percent">({activeGoal?.percent}%)</span>
+          </span>
+        </div>
+        <div class="goal-track">
+          <div
+            class="goal-fill"
+            style="width: {activeGoal?.percent}%;"
+          >
+            <div class="goal-shimmer"></div>
+          </div>
+        </div>
+      </div>
+    {/if}
+
     <div class="stats-counter">
       <span class="counter-label">EVENTS</span>
       <span class="counter-val">{totalEventsReceived}</span>
@@ -337,7 +462,22 @@
     </div>
   {/if}
 
-  <!-- Right: Top Gifters Leaderboard -->
+  <!-- Center Celebration Banner when a Community Goal is completed -->
+  {#if celebratingGoal}
+    <div class="celebration-overlay" id="goal-celebration-banner">
+      <div class="celebration-card glass-panel">
+        <div class="celebration-rays"></div>
+        <div class="celebration-trophy">🏆</div>
+        <h2 class="celebration-subtitle">COMMUNITY GOAL UNLOCKED!</h2>
+        <h1 class="celebration-title">{celebratingGoal.name}</h1>
+        <div class="celebration-pill">
+          <span>🎮 Spawning in Minecraft!</span>
+        </div>
+      </div>
+    </div>
+  {/if}
+
+  <!-- Right: Top Gifters Leaderboard & Secondary Goals -->
   <aside class="leaderboard-container glass-panel" id="overlay-leaderboard">
     <div class="leaderboard-header">
       <span class="trophy-icon">🏆</span>
@@ -356,6 +496,20 @@
         {/each}
       {/if}
     </div>
+
+    <!-- Secondary Goal in sidebar -->
+    {#if goals.length > 1}
+      {@const secGoal = goals[1]}
+      <div class="secondary-goal-widget">
+        <div class="goal-label-row">
+          <span class="goal-name-small">{secGoal?.name}</span>
+          <span class="goal-percent-small">{secGoal?.percent}%</span>
+        </div>
+        <div class="goal-track-small">
+          <div class="goal-fill-sec" style="width: {secGoal?.percent}%;"></div>
+        </div>
+      </div>
+    {/if}
   </aside>
 
   <!-- Bottom: Game Action Ticker -->
@@ -391,6 +545,7 @@
         <button onclick={() => testGift('Ice Cream', 1, '🍦')}>🍦 Test Ice Cream</button>
         <button onclick={() => testGift('Lion', 29999, '🦁')}>🦁 Test Lion</button>
         <button onclick={testLike}>❤️ Test Likes</button>
+        <button class="goal-test-btn" onclick={testCompleteGoal}>🏆 Complete Goal</button>
       </div>
     </div>
   {/if}
@@ -416,7 +571,8 @@
     justify-content: space-between;
     align-items: center;
     padding: 0 20px;
-    height: 50px;
+    height: 52px;
+    gap: 24px;
   }
 
   .status-pill {
@@ -426,6 +582,7 @@
     font-size: 13px;
     font-weight: 700;
     letter-spacing: 0.08em;
+    white-space: nowrap;
   }
 
   .indicator-dot {
@@ -445,12 +602,87 @@
     box-shadow: 0 0 10px var(--accent-rose);
   }
 
+  /* Goal Widget in Header */
+  .goal-widget {
+    flex: 1;
+    max-width: 540px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .goal-label-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 12px;
+    font-family: var(--font-display);
+    font-weight: 700;
+  }
+
+  .goal-name {
+    color: var(--text-main);
+    letter-spacing: 0.04em;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .goal-counts {
+    font-family: var(--font-mono);
+    color: var(--text-muted);
+    white-space: nowrap;
+  }
+
+  .goal-counts strong {
+    color: var(--accent-cyan);
+  }
+
+  .goal-percent {
+    color: var(--accent-emerald);
+    margin-left: 4px;
+  }
+
+  .goal-track {
+    width: 100%;
+    height: 10px;
+    background: rgba(255, 255, 255, 0.08);
+    border-radius: 6px;
+    overflow: hidden;
+    position: relative;
+    border: 1px solid rgba(255, 255, 255, 0.05);
+  }
+
+  .goal-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #10b981, #06b6d4);
+    box-shadow: 0 0 12px rgba(6, 182, 212, 0.5);
+    border-radius: 6px;
+    transition: width 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+    position: relative;
+    overflow: hidden;
+  }
+
+  .goal-shimmer {
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(
+      90deg,
+      transparent,
+      rgba(255, 255, 255, 0.3),
+      transparent
+    );
+    background-size: 200% 100%;
+    animation: shimmer 2s infinite linear;
+  }
+
   .stats-counter {
     display: flex;
     align-items: center;
     gap: 8px;
     font-family: var(--font-mono);
     font-size: 13px;
+    white-space: nowrap;
   }
 
   .counter-label {
@@ -622,6 +854,64 @@
     color: var(--accent-emerald);
   }
 
+  /* Goal Celebration Banner */
+  .celebration-overlay {
+    position: absolute;
+    top: 35%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 150;
+    animation: alertPop 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+  }
+
+  .celebration-card {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    padding: 40px 60px;
+    min-width: 520px;
+    border: 2px solid var(--accent-amber);
+    box-shadow: 0 0 60px rgba(245, 158, 11, 0.5), 0 0 100px rgba(0, 0, 0, 0.9);
+    background: rgba(15, 23, 42, 0.94);
+    overflow: hidden;
+  }
+
+  .celebration-trophy {
+    font-size: 54px;
+    margin-bottom: 12px;
+    animation: bounceSoft 1.5s infinite;
+  }
+
+  .celebration-subtitle {
+    font-family: var(--font-mono);
+    font-size: 14px;
+    font-weight: 800;
+    letter-spacing: 0.25em;
+    color: var(--accent-amber);
+    margin-bottom: 8px;
+  }
+
+  .celebration-title {
+    font-family: var(--font-display);
+    font-size: 32px;
+    font-weight: 900;
+    color: #ffffff;
+    margin-bottom: 16px;
+  }
+
+  .celebration-pill {
+    background: rgba(245, 158, 11, 0.15);
+    border: 1px solid var(--accent-amber);
+    color: var(--accent-amber);
+    padding: 6px 20px;
+    border-radius: 20px;
+    font-weight: 700;
+    font-size: 13px;
+    letter-spacing: 0.05em;
+  }
+
   /* Right Leaderboard */
   .leaderboard-container {
     grid-column: 3;
@@ -692,6 +982,42 @@
     font-weight: 700;
     color: var(--accent-cyan);
     font-size: 12px;
+  }
+
+  /* Secondary Goal in sidebar */
+  .secondary-goal-widget {
+    margin-top: auto;
+    padding-top: 12px;
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .goal-name-small {
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--text-main);
+  }
+
+  .goal-percent-small {
+    font-size: 11px;
+    font-family: var(--font-mono);
+    color: var(--accent-emerald);
+  }
+
+  .goal-track-small {
+    height: 6px;
+    background: rgba(255, 255, 255, 0.08);
+    border-radius: 4px;
+    overflow: hidden;
+  }
+
+  .goal-fill-sec {
+    height: 100%;
+    background: linear-gradient(90deg, #f59e0b, #ef4444);
+    border-radius: 4px;
+    transition: width 0.4s ease;
   }
 
   /* Bottom Action Ticker */
@@ -787,5 +1113,10 @@
 
   .control-buttons button:hover {
     background: rgba(255, 255, 255, 0.15);
+  }
+
+  .goal-test-btn {
+    border-color: rgba(245, 158, 11, 0.4) !important;
+    color: var(--accent-amber) !important;
   }
 </style>

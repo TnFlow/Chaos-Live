@@ -1,8 +1,12 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import dotenv from 'dotenv';
 import type { RuleDefinition } from '@chaos-live/core';
 import { logger } from '../logger.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // Load .env from project root if available
 const envPath = path.resolve(process.cwd(), '.env');
@@ -30,7 +34,7 @@ export function loadRules(rulesFilePath?: string): RuleDefinition[] {
     rulesFilePath,
     path.resolve(process.cwd(), 'packages/app/config/rules.json'),
     path.resolve(process.cwd(), 'config/rules.json'),
-    path.resolve(import.meta.dirname, '../../config/rules.json'),
+    path.resolve(__dirname, '../../config/rules.json'),
   ].filter(Boolean) as string[];
 
   let targetPath = possiblePaths[0]!;

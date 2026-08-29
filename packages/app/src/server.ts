@@ -1,10 +1,14 @@
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { WebSocketServer, WebSocket } from 'ws';
 import { PROTOCOL_VERSION } from '@chaos-live/shared-protocol';
 import type { ChaosEvent, GameAction } from '@chaos-live/shared-protocol';
 import { logger } from './logger.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 export type ClientType = 'overlay' | 'mod' | 'unknown';
 
@@ -18,6 +22,7 @@ export interface ConnectedClient {
 export interface WebSocketHubConfig {
   port: number;
   staticDir?: string;
+  onClientConnected?: (socket: WebSocket, client: ConnectedClient) => void;
 }
 
 /**
@@ -30,6 +35,7 @@ export interface WebSocketHubConfig {
 export class WebSocketHub {
   public readonly port: number;
   private readonly staticDir: string;
+  private readonly onClientConnected?: (socket: WebSocket, client: ConnectedClient) => void;
 
   private server?: http.Server;
   private wss?: WebSocketServer;
@@ -37,12 +43,13 @@ export class WebSocketHub {
 
   constructor(config: WebSocketHubConfig) {
     this.port = config.port;
+    this.onClientConnected = config.onClientConnected;
 
     const possiblePaths = [
       config.staticDir,
       path.resolve(process.cwd(), 'packages/overlay/dist'),
       path.resolve(process.cwd(), '../overlay/dist'),
-      path.resolve(import.meta.dirname, '../../overlay/dist'),
+      path.resolve(__dirname, '../../overlay/dist'),
     ].filter(Boolean) as string[];
 
     let resolvedDir = possiblePaths[0]!;
@@ -198,6 +205,12 @@ export class WebSocketHub {
         serverTime: Date.now(),
       }),
     );
+
+    try {
+      this.onClientConnected?.(socket, clientInfo);
+    } catch {
+      // Ignore callback errors
+    }
 
     socket.on('message', (data) => {
       try {
