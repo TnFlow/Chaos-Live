@@ -11,6 +11,7 @@ import { MockAdapter } from '@chaos-live/adapter-mock';
 import { RconAdapter } from '@chaos-live/adapter-minecraft-rcon';
 import type { GameAction, ActionResult, ChaosEvent } from '@chaos-live/shared-protocol';
 import { loadConfig } from './config/config.js';
+import { WebSocketHub } from './server.js';
 import { logger } from './logger.js';
 
 /**
@@ -134,8 +135,14 @@ async function bootstrap(): Promise<void> {
   // Cache recent events in-memory to pair with action results for database persistence
   const recentEvents = new Map<string, ChaosEvent>();
 
+  // Initialize WebSocket Hub for OBS Overlay and future mod
+  const wsHub = new WebSocketHub({ port: config.wsPort });
+
   platformAdapter.onEvent((event) => {
     recentEvents.set(event.id, event);
+    // Broadcast raw stream event to overlay
+    wsHub.broadcastEvent(event);
+
     // Keep cache bounded
     if (recentEvents.size > 500) {
       const oldestKey = recentEvents.keys().next().value;
@@ -183,6 +190,11 @@ async function bootstrap(): Promise<void> {
             { correlationId, ...details },
             `⚡ [${state}] Action dispatched to ${gameAdapter.name}`,
           );
+          wsHub.broadcastToOverlay('ACTION_DISPATCHED', {
+            correlationId,
+            actionType: details?.['actionType'],
+            command: details?.['command'],
+          });
           break;
         case 'EVENT_COMPLETED': {
           logger.info(
@@ -221,6 +233,7 @@ async function bootstrap(): Promise<void> {
   const shutdown = async (signal: string): Promise<void> => {
     logger.info({ signal }, 'Shutting down Chaos-Live engine...');
     await engine.stop();
+    await wsHub.stop();
     await closePrismaClient();
     logger.info('Chaos-Live terminated cleanly.');
     process.exit(0);
@@ -230,8 +243,9 @@ async function bootstrap(): Promise<void> {
   process.on('SIGTERM', () => void shutdown('SIGTERM'));
 
   try {
+    await wsHub.start();
     await engine.start();
-    logger.info('Chaos-Live MVP pipeline is ACTIVE and processing events.');
+    logger.info('Chaos-Live pipeline is ACTIVE and processing events.');
   } catch (err) {
     logger.error({ err }, 'Failed to start Chaos-Live pipeline');
     process.exit(1);

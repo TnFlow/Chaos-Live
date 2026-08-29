@@ -8,18 +8,22 @@
     "build": "tsc",
     "dev": "tsx src/main.ts",
     "start": "node dist/main.js",
-    "test": "jest",
+    "test": "node --experimental-vm-modules ../../node_modules/jest/bin/jest.js",
     "clean": "rimraf dist"
   },
   "dependencies": {
-    "@chaos-live/shared-protocol": "*",
-    "@chaos-live/core": "*",
-    "@chaos-live/adapter-tiktok": "*",
-    "@chaos-live/adapter-mock": "*",
     "@chaos-live/adapter-minecraft-rcon": "*",
+    "@chaos-live/adapter-mock": "*",
+    "@chaos-live/adapter-tiktok": "*",
+    "@chaos-live/core": "*",
+    "@chaos-live/shared-protocol": "*",
+    "dotenv": "^16.4.0",
     "pino": "^9.0.0",
     "pino-pretty": "^11.0.0",
-    "dotenv": "^16.4.0"
+    "ws": "^8.21.3"
   },
-  "license": "SEE LICENSE IN ../../LICENSE"
+  "license": "SEE LICENSE IN ../../LICENSE",
+  "devDependencies": {
+    "@types/ws": "^8.18.1"
+  }
 }
