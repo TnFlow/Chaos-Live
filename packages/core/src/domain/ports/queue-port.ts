@@ -29,8 +29,10 @@ export interface QueuePort {
   /**
    * Add an action to the queue with an initial priority score.
    * @param item - The queue item to enqueue.
+   * @param now - Optional timestamp for deterministic scoring/testing.
+   * @returns boolean indicating whether the item was admitted.
    */
-  enqueue(item: QueueItem): void;
+  enqueue(item: QueueItem, now?: number): boolean;
 
   /**
    * Remove and return the highest-priority item from the queue.

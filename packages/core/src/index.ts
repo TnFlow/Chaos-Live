@@ -22,3 +22,11 @@ export {
   type EvaluationResult,
 } from './engine/rule-evaluator.js';
 
+// Queue
+export {
+  InMemoryPriorityQueue,
+  type InMemoryQueueConfig,
+  type RateLimitRule,
+} from './queue/in-memory-priority-queue.js';
+
+
