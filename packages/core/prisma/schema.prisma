@@ -1,0 +1,49 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Goal {
+  id            String   @id @default(uuid())
+  name          String
+  eventType     String   // e.g. "gift", "like"
+  targetValue   Int
+  currentValue  Int      @default(0)
+  actionCommand String
+  actionType    String   @default("execute_command")
+  completed     Boolean  @default(false)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([eventType, completed])
+}
+
+model ProcessedEvent {
+  id               String   @id // correlationId (ChaosEvent.id)
+  platform         String
+  eventType        String
+  userId           String
+  userDisplayName  String
+  value            Int
+  actionDispatched Boolean  @default(false)
+  command          String?
+  success          Boolean  @default(false)
+  error            String?
+  durationMs       Int?
+  createdAt        DateTime @default(now())
+
+  @@index([eventType, createdAt])
+}
+
+model SessionStat {
+  id            String    @id @default(uuid())
+  startedAt     DateTime  @default(now())
+  endedAt       DateTime?
+  totalEvents   Int       @default(0)
+  totalGifts    Int       @default(0)
+  totalDiamonds Int       @default(0)
+}

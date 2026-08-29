@@ -17,7 +17,11 @@
     "clean": "rimraf dist"
   },
   "dependencies": {
-    "@chaos-live/shared-protocol": "*"
+    "@chaos-live/shared-protocol": "*",
+    "@prisma/client": "^6.19.3"
   },
-  "license": "SEE LICENSE IN ../../LICENSE"
+  "license": "SEE LICENSE IN ../../LICENSE",
+  "devDependencies": {
+    "prisma": "^6.19.3"
+  }
 }

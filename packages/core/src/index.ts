@@ -35,4 +35,11 @@ export {
   type RateLimitRule,
 } from './queue/in-memory-priority-queue.js';
 
+// Database
+export {
+  getPrismaClient,
+  closePrismaClient,
+  recordProcessedEvent,
+} from './db/client.js';
+
 
