@@ -13,3 +13,12 @@ export type {
   QueuePort,
   QueueItem,
 } from './domain/index.js';
+
+// Engine
+export {
+  RuleEvaluator,
+  interpolateString,
+  interpolatePayload,
+  type EvaluationResult,
+} from './engine/rule-evaluator.js';
+
