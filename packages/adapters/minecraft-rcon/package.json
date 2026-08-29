@@ -13,12 +13,13 @@
   },
   "scripts": {
     "build": "tsc",
-    "test": "jest",
+    "test": "node --experimental-vm-modules ../../node_modules/jest/bin/jest.js",
     "clean": "rimraf dist"
   },
   "dependencies": {
+    "@chaos-live/core": "*",
     "@chaos-live/shared-protocol": "*",
-    "@chaos-live/core": "*"
+    "rcon-client": "^4.2.5"
   },
   "license": "SEE LICENSE IN ../../../LICENSE"
 }
