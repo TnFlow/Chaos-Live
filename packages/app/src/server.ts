@@ -37,8 +37,23 @@ export class WebSocketHub {
 
   constructor(config: WebSocketHubConfig) {
     this.port = config.port;
-    this.staticDir =
-      config.staticDir ?? path.resolve(process.cwd(), 'packages/overlay/dist');
+
+    const possiblePaths = [
+      config.staticDir,
+      path.resolve(process.cwd(), 'packages/overlay/dist'),
+      path.resolve(process.cwd(), '../overlay/dist'),
+      path.resolve(import.meta.dirname, '../../overlay/dist'),
+    ].filter(Boolean) as string[];
+
+    let resolvedDir = possiblePaths[0]!;
+    for (const p of possiblePaths) {
+      if (fs.existsSync(p) && fs.existsSync(path.join(p, 'index.html'))) {
+        resolvedDir = p;
+        break;
+      }
+    }
+
+    this.staticDir = resolvedDir;
   }
 
   public async start(): Promise<void> {

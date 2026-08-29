@@ -26,8 +26,20 @@ export interface AppConfig {
 }
 
 export function loadRules(rulesFilePath?: string): RuleDefinition[] {
-  const defaultPath = path.resolve(process.cwd(), 'packages/app/config/rules.json');
-  const targetPath = rulesFilePath || defaultPath;
+  const possiblePaths = [
+    rulesFilePath,
+    path.resolve(process.cwd(), 'packages/app/config/rules.json'),
+    path.resolve(process.cwd(), 'config/rules.json'),
+    path.resolve(import.meta.dirname, '../../config/rules.json'),
+  ].filter(Boolean) as string[];
+
+  let targetPath = possiblePaths[0]!;
+  for (const p of possiblePaths) {
+    if (fs.existsSync(p)) {
+      targetPath = p;
+      break;
+    }
+  }
 
   if (!fs.existsSync(targetPath)) {
     logger.warn({ targetPath }, 'Rules file does not exist, starting with empty rules.');
