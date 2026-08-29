@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "id": "chaoslive",
+  "version": "${version}",
+  "name": "Chaos-Live Connector",
+  "description": "Outbound WebSocket connector linking Minecraft to the Chaos-Live streaming middleware",
+  "authors": [
+    "Chaos-Live Team"
+  ],
+  "contact": {
+    "homepage": "https://github.com/TnFlow/Chaos-Live",
+    "sources": "https://github.com/TnFlow/Chaos-Live"
+  },
+  "license": "AGPL-3.0",
+  "icon": "assets/chaoslive/icon.png",
+  "environment": "*",
+  "entrypoints": {
+    "server": [
+      "com.chaoslive.ChaosLiveMod"
+    ]
+  },
+  "mixins": [
+    "chaoslive.mixins.json"
+  ],
+  "depends": {
+    "fabricloader": ">=0.15.11",
+    "minecraft": "~1.20.1",
+    "java": ">=17",
+    "fabric-api": "*"
+  }
+}
