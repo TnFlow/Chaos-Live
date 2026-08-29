@@ -22,6 +22,12 @@ export {
   type EvaluationResult,
 } from './engine/rule-evaluator.js';
 
+export {
+  EventEngine,
+  type EventEngineConfig,
+  type PipelineListener,
+} from './engine/event-engine.js';
+
 // Queue
 export {
   InMemoryPriorityQueue,
