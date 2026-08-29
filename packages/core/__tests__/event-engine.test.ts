@@ -241,4 +241,110 @@ describe('EventEngine Orchestrator', () => {
 
     await engine.stop();
   });
+
+  it('processes events concurrently from multiple platform adapters with unified queueing', async () => {
+    const tiktokPlatform = new MockPlatform();
+    const twitchPlatform = new MockPlatform();
+    const game = new MockGame();
+
+    const multiPlatformRules: RuleDefinition[] = [
+      {
+        id: 'rule-tiktok-gift',
+        name: 'TikTok Rose Rule',
+        priority: 10,
+        enabled: true,
+        matcher: {
+          platforms: ['tiktok'],
+          eventTypes: ['gift'],
+        },
+        action: {
+          actionType: 'execute_command',
+          command: 'summon chicken ~ ~ ~',
+        },
+      },
+      {
+        id: 'rule-twitch-cheer',
+        name: 'Twitch Bits Rule',
+        priority: 20,
+        enabled: true,
+        matcher: {
+          platforms: ['twitch'],
+          eventTypes: ['gift'],
+        },
+        action: {
+          actionType: 'execute_command',
+          command: 'summon zombie ~ ~ ~',
+        },
+      },
+      {
+        id: 'rule-any-like',
+        name: 'Cross-Platform Like Rule',
+        priority: 5,
+        enabled: true,
+        matcher: {
+          eventTypes: ['like'],
+        },
+        action: {
+          actionType: 'execute_command',
+          command: 'particle heart ~ ~ ~',
+        },
+      },
+    ];
+
+    const queue = new InMemoryPriorityQueue();
+    const ruleEvaluator = new RuleEvaluator(multiPlatformRules);
+    const engine = new EventEngine({
+      queue,
+      ruleEvaluator,
+      gameAdapter: game,
+      platformAdapters: [tiktokPlatform, twitchPlatform],
+    });
+
+    await engine.start();
+
+    // Fire events from both platforms simultaneously
+    tiktokPlatform.simulateEvent({
+      id: 'tt-1',
+      platform: 'tiktok',
+      type: 'gift',
+      user: { id: 'tt-u1', displayName: 'TikToker' },
+      value: 10,
+      metadata: { giftName: 'Rose', giftId: 1, repeatCount: 1, diamondCount: 1 },
+      raw: {},
+      timestamp: Date.now(),
+    });
+
+    twitchPlatform.simulateEvent({
+      id: 'tw-1',
+      platform: 'twitch',
+      type: 'gift',
+      user: { id: 'tw-u1', displayName: 'Twitcher' },
+      value: 500,
+      metadata: { giftName: 'Cheer 500 Bits', giftId: 500, repeatCount: 1, diamondCount: 500 },
+      raw: {},
+      timestamp: Date.now(),
+    });
+
+    twitchPlatform.simulateEvent({
+      id: 'tw-like',
+      platform: 'twitch',
+      type: 'like',
+      user: { id: 'tw-u2', displayName: 'Liker' },
+      value: 1,
+      metadata: { likeCount: 1 },
+      raw: {},
+      timestamp: Date.now(),
+    });
+
+    await new Promise((r) => setTimeout(r, 60));
+
+    // All 3 events dispatched across both platforms
+    expect(game.executed.length).toBe(3);
+    const commands = game.executed.map((a) => a.command);
+    expect(commands).toContain('summon chicken ~ ~ ~');
+    expect(commands).toContain('summon zombie ~ ~ ~');
+    expect(commands).toContain('particle heart ~ ~ ~');
+
+    await engine.stop();
+  });
 });
