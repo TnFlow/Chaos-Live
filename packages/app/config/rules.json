@@ -35,8 +35,25 @@
       }
     },
     {
+      "id": "rule-gift-doughnut",
+      "name": "Gift: Doughnut -> Summon Skeleton with Bow",
+      "enabled": true,
+      "priority": 50,
+      "cooldownMs": 1000,
+      "matcher": {
+        "eventTypes": ["gift"],
+        "metadataMatch": {
+          "giftName": "Doughnut"
+        }
+      },
+      "action": {
+        "actionType": "execute_command",
+        "command": "summon skeleton ~ ~ ~ {HandItems:[{id:\"minecraft:bow\",Count:1b},{}],CustomName:'\"${user.displayName}\"'}"
+      }
+    },
+    {
       "id": "rule-gift-lion",
-      "name": "Gift: Lion -> Summon Creeper",
+      "name": "Gift: Lion -> Summon Powered Creeper",
       "enabled": true,
       "priority": 100,
       "cooldownMs": 0,
@@ -53,7 +70,7 @@
     },
     {
       "id": "rule-likes",
-      "name": "Likes -> Particle Effect",
+      "name": "Likes -> Heart Particles",
       "enabled": true,
       "priority": 5,
       "cooldownMs": 2000,
@@ -80,8 +97,22 @@
       }
     },
     {
+      "id": "rule-share",
+      "name": "Share -> Streamer Speed Buff",
+      "enabled": true,
+      "priority": 20,
+      "cooldownMs": 3000,
+      "matcher": {
+        "eventTypes": ["share"]
+      },
+      "action": {
+        "actionType": "apply_effect",
+        "command": "effect give @a minecraft:speed 15 1"
+      }
+    },
+    {
       "id": "rule-comment",
-      "name": "Chat -> In-Game Chat",
+      "name": "Chat -> In-Game Chat Message",
       "enabled": true,
       "priority": 2,
       "cooldownMs": 500,
