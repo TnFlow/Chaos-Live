@@ -1,5 +1,15 @@
 // @chaos-live/core
 // Domain logic: event engine, rule evaluator, priority queue, goal engine.
-// Populated in Phase 1.
 
-export {};
+// Domain models & port interfaces
+export type {
+  RuleDefinition,
+  EventMatcher,
+  ActionTemplate,
+  PipelineState,
+  PipelineLogEntry,
+  PlatformAdapter,
+  GameAdapter,
+  QueuePort,
+  QueueItem,
+} from './domain/index.js';
