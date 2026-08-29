@@ -35,6 +35,14 @@ export {
   type RateLimitRule,
 } from './queue/in-memory-priority-queue.js';
 
+// Goals
+export {
+  GoalEngine,
+  type GoalConfig,
+  type GoalState,
+  type GoalProgressUpdate,
+} from './goals/goal-engine.js';
+
 // Database
 export {
   getPrismaClient,
