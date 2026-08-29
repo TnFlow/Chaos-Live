@@ -11,6 +11,7 @@
     "packages/shared-protocol",
     "packages/core",
     "packages/adapters/tiktok",
+    "packages/adapters/twitch",
     "packages/adapters/mock",
     "packages/adapters/minecraft-rcon",
     "packages/overlay",

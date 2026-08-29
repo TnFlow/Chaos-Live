@@ -38,6 +38,11 @@ docker-data/
 # Test coverage
 coverage/
 
+# Gradle & Fabric build
+.gradle/
+build/
+bin/
+
 # Minecraft mod (Gradle/Fabric)
 mc-mod/.gradle/
 mc-mod/build/
