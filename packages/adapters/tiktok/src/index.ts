@@ -1,5 +1,19 @@
 // @chaos-live/adapter-tiktok
-// TikTok LIVE platform adapter — wraps tiktok-live-connector.
-// Populated in Phase 2, Step 2.1.
+// TikTok LIVE platform adapter wrapping tiktok-live-connector.
 
-export {};
+export {
+  TikTokAdapter,
+  type TikTokAdapterConfig,
+  type ReconnectConfig,
+  type CircuitBreakerConfig,
+} from './TikTokAdapter.js';
+
+export {
+  normalizeGift,
+  normalizeLike,
+  normalizeComment,
+  normalizeFollow,
+  normalizeShare,
+  normalizeSubscribe,
+  normalizeViewerCount,
+} from './normalizer.js';
