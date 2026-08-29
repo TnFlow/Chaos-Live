@@ -1,0 +1,49 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+*.tsbuildinfo
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+
+# Database
+*.db
+*.db-journal
+prisma/migrations/**/migration_lock.toml
+
+# Docker volumes
+docker-data/
+
+# Test coverage
+coverage/
+
+# Minecraft mod (Gradle/Fabric)
+mc-mod/.gradle/
+mc-mod/build/
+mc-mod/run/
+mc-mod/.fabric/
+
+# Temporary
+tmp/
+temp/

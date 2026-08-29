@@ -1,0 +1,25 @@
+{
+  "name": "@chaos-live/app",
+  "version": "0.1.0",
+  "description": "Chaos-Live composition root — CLI entry point, orchestrator, WebSocket hub",
+  "type": "module",
+  "main": "./dist/main.js",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx src/main.ts",
+    "start": "node dist/main.js",
+    "test": "jest",
+    "clean": "rimraf dist"
+  },
+  "dependencies": {
+    "@chaos-live/shared-protocol": "*",
+    "@chaos-live/core": "*",
+    "@chaos-live/adapter-tiktok": "*",
+    "@chaos-live/adapter-mock": "*",
+    "@chaos-live/adapter-minecraft-rcon": "*",
+    "pino": "^9.0.0",
+    "pino-pretty": "^11.0.0",
+    "dotenv": "^16.4.0"
+  },
+  "license": "SEE LICENSE IN ../../LICENSE"
+}

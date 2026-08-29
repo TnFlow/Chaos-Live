@@ -1,0 +1,28 @@
+# Chaos-Live — Docker Compose
+# Runs the middleware alongside its dependencies for local development.
+
+services:
+  chaos-live:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "${WS_PORT:-8080}:8080"
+    volumes:
+      - chaos-live-data:/app/data
+      - ./packages/app/config:/app/packages/app/config:ro
+    env_file:
+      - .env
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=file:/app/data/chaos-live.db
+    restart: unless-stopped
+    # The middleware connects OUT to Minecraft RCON on the host network.
+    # On Linux, use `network_mode: host` or `extra_hosts: ["host.docker.internal:host-gateway"]`
+    # On Windows/Mac, host.docker.internal is available by default.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+volumes:
+  chaos-live-data:
+    driver: local

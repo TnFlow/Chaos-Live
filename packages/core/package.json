@@ -1,0 +1,23 @@
+{
+  "name": "@chaos-live/core",
+  "version": "0.1.0",
+  "description": "Domain logic: event engine, rule evaluator, priority queue, goal engine",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "test": "jest",
+    "clean": "rimraf dist"
+  },
+  "dependencies": {
+    "@chaos-live/shared-protocol": "*"
+  },
+  "license": "SEE LICENSE IN ../../LICENSE"
+}

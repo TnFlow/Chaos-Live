@@ -1,0 +1,24 @@
+{
+  "name": "@chaos-live/adapter-mock",
+  "version": "0.1.0",
+  "description": "Mock platform adapter for development and testing — generates synthetic ChaosEvent streams",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "test": "jest",
+    "clean": "rimraf dist"
+  },
+  "dependencies": {
+    "@chaos-live/shared-protocol": "*",
+    "@chaos-live/core": "*"
+  },
+  "license": "SEE LICENSE IN ../../../LICENSE"
+}

@@ -1,0 +1,7 @@
+{
+  "name": "@chaos-live/overlay",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Svelte OBS overlay — Browser Source for real-time event display",
+  "scripts": {}
+}

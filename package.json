@@ -1,0 +1,43 @@
+{
+  "name": "chaos-live",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Modular real-time event middleware connecting TikTok LIVE to Minecraft Java Edition",
+  "type": "module",
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "workspaces": [
+    "packages/shared-protocol",
+    "packages/core",
+    "packages/adapters/tiktok",
+    "packages/adapters/mock",
+    "packages/adapters/minecraft-rcon",
+    "packages/overlay",
+    "packages/app"
+  ],
+  "scripts": {
+    "build": "npm run build --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "lint": "eslint 'packages/**/*.ts'",
+    "lint:fix": "eslint 'packages/**/*.ts' --fix",
+    "format": "prettier --write 'packages/**/*.{ts,json,md}'",
+    "format:check": "prettier --check 'packages/**/*.{ts,json,md}'",
+    "clean": "npm run clean --workspaces --if-present",
+    "dev": "npm run dev --workspace=packages/app"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.5.0",
+    "eslint": "^9.0.0",
+    "@eslint/js": "^9.0.0",
+    "typescript-eslint": "^8.0.0",
+    "prettier": "^3.3.0",
+    "eslint-config-prettier": "^10.0.0",
+    "jest": "^29.7.0",
+    "ts-jest": "^29.2.0",
+    "@types/jest": "^29.5.0",
+    "tsx": "^4.16.0"
+  },
+  "license": "SEE LICENSE FILE"
+}
