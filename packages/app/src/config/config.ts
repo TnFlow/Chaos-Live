@@ -18,6 +18,10 @@ export interface AppConfig {
   mockIntervalMs: number;
   logLevel: string;
   wsPort: number;
+  rconHost: string;
+  rconPort: number;
+  rconPassword?: string;
+  rconEnabled: boolean;
   rules: RuleDefinition[];
 }
 
@@ -51,6 +55,12 @@ export function loadConfig(): AppConfig {
   const mockIntervalMs = Number(process.env.MOCK_INTERVAL_MS || 2500);
   const logLevel = process.env.LOG_LEVEL || 'info';
   const wsPort = Number(process.env.WS_PORT || 8080);
+
+  const rconHost = process.env.RCON_HOST || '127.0.0.1';
+  const rconPort = Number(process.env.RCON_PORT || 25575);
+  const rconPassword = process.env.RCON_PASSWORD?.trim();
+  const rconEnabled = Boolean(rconPassword && process.env.DISABLE_RCON !== 'true');
+
   const rules = loadRules();
 
   return {
@@ -59,6 +69,10 @@ export function loadConfig(): AppConfig {
     mockIntervalMs,
     logLevel,
     wsPort,
+    rconHost,
+    rconPort,
+    rconPassword,
+    rconEnabled,
     rules,
   };
 }

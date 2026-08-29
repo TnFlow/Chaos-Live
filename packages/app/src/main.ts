@@ -1,18 +1,25 @@
 import type { GameAdapter } from '@chaos-live/core';
-import { EventEngine, InMemoryPriorityQueue, RuleEvaluator } from '@chaos-live/core';
+import {
+  EventEngine,
+  InMemoryPriorityQueue,
+  RuleEvaluator,
+  recordProcessedEvent,
+  closePrismaClient,
+} from '@chaos-live/core';
 import { TikTokAdapter } from '@chaos-live/adapter-tiktok';
 import { MockAdapter } from '@chaos-live/adapter-mock';
-import type { GameAction, ActionResult } from '@chaos-live/shared-protocol';
+import { RconAdapter } from '@chaos-live/adapter-minecraft-rcon';
+import type { GameAction, ActionResult, ChaosEvent } from '@chaos-live/shared-protocol';
 import { loadConfig } from './config/config.js';
 import { logger } from './logger.js';
 
 /**
  * ConsoleGameAdapter
- * Logs dispatched actions to the console for Phase 2 validation milestone
- * before Minecraft RCON is wired in Phase 3.
+ * Logs dispatched actions to the console for testing or fallback
+ * when Minecraft server is offline.
  */
 class ConsoleGameAdapter implements GameAdapter {
-  public readonly name = 'Console Game Adapter (Validation)';
+  public readonly name = 'Console Game Adapter (Fallback)';
   private connected = false;
 
   async connect(): Promise<void> {
@@ -70,7 +77,38 @@ async function bootstrap(): Promise<void> {
     },
   });
 
-  const gameAdapter = new ConsoleGameAdapter();
+  // Determine game adapter: Minecraft RCON or Console Fallback
+  let gameAdapter: GameAdapter;
+
+  if (config.rconEnabled && config.rconPassword) {
+    logger.info(
+      { host: config.rconHost, port: config.rconPort },
+      `🕹️  Game Target: MINECRAFT RCON (connecting to ${config.rconHost}:${config.rconPort})...`,
+    );
+
+    const rcon = new RconAdapter({
+      host: config.rconHost,
+      port: config.rconPort,
+      password: config.rconPassword,
+      timeoutMs: 5000,
+      retry: { maxAttempts: 2, delayMs: 1000 },
+    });
+
+    try {
+      await rcon.connect();
+      logger.info('✅ Connected to Minecraft RCON server successfully.');
+      gameAdapter = rcon;
+    } catch (err) {
+      logger.warn(
+        { err: err instanceof Error ? err.message : String(err) },
+        '⚠️  Could not connect to Minecraft RCON server. Falling back to Console Game Adapter.',
+      );
+      gameAdapter = new ConsoleGameAdapter();
+    }
+  } else {
+    logger.info('🕹️  Game Target: CONSOLE (RCON not configured or disabled).');
+    gameAdapter = new ConsoleGameAdapter();
+  }
 
   let platformAdapter: TikTokAdapter | MockAdapter;
   if (config.useMock) {
@@ -92,6 +130,18 @@ async function bootstrap(): Promise<void> {
       circuitBreaker: { failureThreshold: 5, resetTimeoutMs: 30000 },
     });
   }
+
+  // Cache recent events in-memory to pair with action results for database persistence
+  const recentEvents = new Map<string, ChaosEvent>();
+
+  platformAdapter.onEvent((event) => {
+    recentEvents.set(event.id, event);
+    // Keep cache bounded
+    if (recentEvents.size > 500) {
+      const oldestKey = recentEvents.keys().next().value;
+      if (oldestKey) recentEvents.delete(oldestKey);
+    }
+  });
 
   const engine = new EventEngine({
     ruleEvaluator,
@@ -131,18 +181,38 @@ async function bootstrap(): Promise<void> {
         case 'ACTION_DISPATCHED':
           logger.info(
             { correlationId, ...details },
-            `⚡ [${state}] Action dispatched to game adapter`,
+            `⚡ [${state}] Action dispatched to ${gameAdapter.name}`,
           );
           break;
-        case 'EVENT_COMPLETED':
+        case 'EVENT_COMPLETED': {
           logger.info(
             { correlationId, ...details },
             `✅ [${state}] Completed in ${details?.['durationMs']}ms`,
           );
+          const event = recentEvents.get(correlationId);
+          if (event) {
+            void recordProcessedEvent(event, undefined, {
+              actionId: correlationId,
+              success: true,
+              durationMs: Number(details?.['durationMs'] ?? 0),
+              response: String(details?.['response'] ?? ''),
+            });
+          }
           break;
-        case 'EVENT_FAILED':
+        }
+        case 'EVENT_FAILED': {
           logger.error({ correlationId, ...details }, `❌ [${state}] Event processing failed`);
+          const event = recentEvents.get(correlationId);
+          if (event) {
+            void recordProcessedEvent(event, undefined, {
+              actionId: correlationId,
+              success: false,
+              durationMs: Number(details?.['durationMs'] ?? 0),
+              error: String(details?.['error'] ?? 'Unknown error'),
+            });
+          }
           break;
+        }
       }
     },
   });
@@ -151,6 +221,7 @@ async function bootstrap(): Promise<void> {
   const shutdown = async (signal: string): Promise<void> => {
     logger.info({ signal }, 'Shutting down Chaos-Live engine...');
     await engine.stop();
+    await closePrismaClient();
     logger.info('Chaos-Live terminated cleanly.');
     process.exit(0);
   };
@@ -160,7 +231,7 @@ async function bootstrap(): Promise<void> {
 
   try {
     await engine.start();
-    logger.info('Chaos-Live pipeline is ACTIVE and processing events.');
+    logger.info('Chaos-Live MVP pipeline is ACTIVE and processing events.');
   } catch (err) {
     logger.error({ err }, 'Failed to start Chaos-Live pipeline');
     process.exit(1);
