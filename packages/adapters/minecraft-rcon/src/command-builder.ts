@@ -47,8 +47,16 @@ export function sanitizeInput(input: string, maxLength = 100): string {
 
 /**
  * Checks whether a command is in the whitelist of safe Minecraft commands.
+ * Blocks command injection, chaining (semicolons, newlines), and dangerous nested execute subcommands.
  */
 export function isCommandSafe(command: string, allowedCommands = DEFAULT_ALLOWED_COMMANDS): boolean {
+  if (!command || typeof command !== 'string') return false;
+
+  // Block command chaining with newlines, carriage returns, semicolons, or null bytes
+  if (/[\r\n;\x00]/.test(command)) {
+    return false;
+  }
+
   const normalized = command.trim().replace(/^\//, '');
   if (!normalized) return false;
 
@@ -62,9 +70,9 @@ export function isCommandSafe(command: string, allowedCommands = DEFAULT_ALLOWED
   // Guard against nested command injection via "execute run <dangerous_command>"
   if (rootCommand === 'execute') {
     const lower = normalized.toLowerCase();
-    const dangerousSubcommands = ['op', 'deop', 'ban', 'kick', 'stop', 'whitelist'];
+    const dangerousSubcommands = ['op', 'deop', 'ban', 'ban-ip', 'kick', 'stop', 'restart', 'whitelist', 'kill'];
     for (const danger of dangerousSubcommands) {
-      if (lower.includes(`run ${danger}`)) {
+      if (new RegExp(`\\brun\\s+${danger}\\b`, 'i').test(lower)) {
         return false;
       }
     }

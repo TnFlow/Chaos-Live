@@ -1,5 +1,6 @@
 import type { GameAdapter } from '@chaos-live/core';
 import type { GameAction, ActionResult } from '@chaos-live/shared-protocol';
+import { isCommandSafe } from '@chaos-live/adapter-minecraft-rcon';
 import type { WebSocketHub, ModActionResult } from '../server.js';
 import { logger } from '../logger.js';
 
@@ -98,6 +99,20 @@ export class HybridGameAdapter implements GameAdapter {
   }
 
   public async executeAction(action: GameAction): Promise<ActionResult> {
+    // 0. Enforce security whitelist & injection validation across all dispatch paths
+    if (!isCommandSafe(action.command)) {
+      logger.warn(
+        { actionId: action.id, command: action.command },
+        'Action rejected: disallowed or dangerous command',
+      );
+      return {
+        actionId: action.id,
+        success: false,
+        durationMs: 0,
+        error: `Security violation: command "${action.command}" is disallowed or dangerous`,
+      };
+    }
+
     // 1. Prioritize Fabric Mod if connected
     if (this.wsHub.isModConnected()) {
       return this.executeViaMod(action);

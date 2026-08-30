@@ -109,4 +109,23 @@ describe('HybridGameAdapter', () => {
     expect(result.response).toBe('RCON executed');
     expect(mockRcon.executeAction).toHaveBeenCalledWith(sampleAction);
   });
+
+  it('rejects disallowed or dangerous commands with a security error without dispatching', async () => {
+    mockWsHub.isModConnected.mockReturnValue(true);
+
+    const maliciousAction: GameAction = {
+      id: 'action-exploit',
+      actionType: 'execute_command',
+      command: '/op attacker',
+      priority: 100,
+      timestamp: Date.now(),
+    };
+
+    const result = await adapter.executeAction(maliciousAction);
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('Security violation');
+    expect(mockWsHub.sendActionToMod).not.toHaveBeenCalled();
+    expect(mockRcon.executeAction).not.toHaveBeenCalled();
+    expect(mockConsole.executeAction).not.toHaveBeenCalled();
+  });
 });
