@@ -9,12 +9,16 @@ on:
       - 'tsconfig.base.json'
       - 'eslint.config.js'
       - 'jest.config.js'
+      - '.github/workflows/ci-packages.yml'
   pull_request:
     branches: [main]
     paths:
       - 'packages/**'
       - 'package.json'
       - 'tsconfig.base.json'
+      - 'eslint.config.js'
+      - 'jest.config.js'
+      - '.github/workflows/ci-packages.yml'
 
 jobs:
   lint-test-build:
@@ -24,7 +28,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup Node.js
+      - name: Setup Node.js 22
         uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -33,14 +37,14 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Lint
-        run: npm run lint
+      - name: Generate Prisma Client
+        run: npx prisma generate --schema=packages/core/prisma/schema.prisma
 
-      - name: Format check
-        run: npm run format:check
+      - name: TypeScript Build
+        run: npm run build
 
-      - name: Test
+      - name: Run Test Suite
         run: npm test
 
-      - name: Build
-        run: npm run build
+      - name: Verify Clean Working Tree
+        run: git diff --exit-code

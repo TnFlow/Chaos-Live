@@ -1,18 +1,20 @@
-name: CI — Minecraft Mod
+name: CI — Minecraft Fabric Mod
 
 on:
   push:
     branches: [main, develop]
     paths:
-      - 'mc-mod/**'
+      - 'packages/minecraft-mod/**'
+      - '.github/workflows/ci-mod.yml'
   pull_request:
     branches: [main]
     paths:
-      - 'mc-mod/**'
+      - 'packages/minecraft-mod/**'
+      - '.github/workflows/ci-mod.yml'
 
 jobs:
   build-mod:
-    name: Build Fabric Mod
+    name: Build Fabric 1.20.1 Mod
     runs-on: ubuntu-latest
 
     steps:
@@ -27,12 +29,16 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      - name: Build mod
-        working-directory: mc-mod
+      - name: Grant execute permission for gradlew
+        working-directory: packages/minecraft-mod
+        run: chmod +x gradlew
+
+      - name: Build Fabric Mod Jar
+        working-directory: packages/minecraft-mod
         run: ./gradlew build
 
-      - name: Upload mod artifact
+      - name: Upload Fabric Mod Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: chaos-live-mod
-          path: mc-mod/build/libs/*.jar
+          name: chaoslive-fabric-mod-1.20.1
+          path: packages/minecraft-mod/build/libs/*.jar
