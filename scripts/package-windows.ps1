@@ -20,6 +20,11 @@ Copy-Item -Recurse -Force "$RootDir\packages\overlay\dist\*" "$ReleaseDir\overla
 Write-Host ">>> Syncing Rules & Configuration..." -ForegroundColor Cyan
 Copy-Item -Force "$RootDir\packages\app\config\rules.json" "$ReleaseDir\config\rules.json"
 
+Write-Host ">>> Syncing Minecraft Mod Wrapper..." -ForegroundColor Cyan
+New-Item -ItemType Directory -Force -Path "$ReleaseDir\minecraft-mod\gradle\wrapper" | Out-Null
+Copy-Item -Force "$RootDir\packages\minecraft-mod\gradle\wrapper\gradle-wrapper.jar" "$ReleaseDir\minecraft-mod\gradle\wrapper\"
+Copy-Item -Force "$RootDir\packages\minecraft-mod\Compilar-Mod.bat" "$ReleaseDir\minecraft-mod\"
+
 Write-Host ">>> Creating ZIP Archive: $ZipFile..." -ForegroundColor Cyan
 if (Test-Path $ZipFile) { Remove-Item $ZipFile -Force }
 Compress-Archive -Path $ReleaseDir -DestinationPath $ZipFile -Force
