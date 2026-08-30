@@ -301,27 +301,76 @@ async function bootstrap(): Promise<void> {
     },
   });
 
-  // Graceful shutdown handlers
-  const shutdown = async (signal: string): Promise<void> => {
+  // Graceful shutdown handlers with queue drain and timeout watchdog
+  let isShuttingDown = false;
+
+  const shutdown = async (signal: string, exitCode = 0): Promise<void> => {
+    if (isShuttingDown) return;
+    isShuttingDown = true;
+
     logger.info({ signal }, 'Shutting down Chaos-Live engine...');
-    await engine.stop();
-    await wsHub.stop();
-    await closePrismaClient();
-    logger.info('Chaos-Live terminated cleanly.');
-    process.exit(0);
+
+    // Force exit watchdog timer to prevent process hang
+    const forceExitTimer = setTimeout(() => {
+      logger.error('Shutdown timed out after 5000ms. Forcing exit.');
+      process.exit(exitCode || 1);
+    }, 5000);
+    forceExitTimer.unref();
+
+    try {
+      // 1. Drain pending queue items if any (up to 2000ms)
+      if (!queue.isEmpty()) {
+        logger.info({ queueSize: queue.size() }, 'Draining remaining queue items before exit...');
+        const drainDeadline = Date.now() + 2000;
+        while (!queue.isEmpty() && Date.now() < drainDeadline) {
+          await engine.processQueue();
+          await new Promise((r) => setTimeout(r, 50));
+        }
+      }
+
+      // 2. Stop event engine (disconnects game and platform adapters)
+      await engine.stop();
+
+      // 3. Stop WebSocket hub and HTTP server
+      await wsHub.stop();
+
+      // 4. Close database connections
+      await closePrismaClient();
+
+      logger.info('Chaos-Live terminated cleanly.');
+      clearTimeout(forceExitTimer);
+      process.exit(exitCode);
+    } catch (err) {
+      logger.error({ err }, 'Error during graceful shutdown');
+      clearTimeout(forceExitTimer);
+      process.exit(1);
+    }
   };
 
-  process.on('SIGINT', () => void shutdown('SIGINT'));
-  process.on('SIGTERM', () => void shutdown('SIGTERM'));
+  process.on('SIGINT', () => void shutdown('SIGINT', 0));
+  process.on('SIGTERM', () => void shutdown('SIGTERM', 0));
+
+  // Process error traps
+  process.on('uncaughtException', (err: Error) => {
+    logger.fatal({ err, stack: err.stack }, '🚨 Uncaught Exception detected in Chaos-Live process');
+    void shutdown('uncaughtException', 1);
+  });
+
+  process.on('unhandledRejection', (reason: unknown) => {
+    logger.error({ reason }, '⚠️ Unhandled Promise Rejection detected');
+  });
 
   try {
     await wsHub.start();
     await engine.start();
     logger.info('Chaos-Live pipeline is ACTIVE and processing events.');
   } catch (err) {
-    logger.error({ err }, 'Failed to start Chaos-Live pipeline');
-    process.exit(1);
+    logger.fatal({ err }, 'Failed to start Chaos-Live pipeline');
+    void shutdown('startup_failure', 1);
   }
 }
 
-void bootstrap();
+bootstrap().catch((err) => {
+  console.error('Fatal error during startup:', err);
+  process.exit(1);
+});
