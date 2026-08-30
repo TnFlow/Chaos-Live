@@ -15,7 +15,7 @@
   "icon": "assets/chaoslive/icon.png",
   "environment": "*",
   "entrypoints": {
-    "server": [
+    "main": [
       "com.chaoslive.ChaosLiveMod"
     ]
   },
