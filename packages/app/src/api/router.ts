@@ -114,7 +114,7 @@ export async function handleApiRequest(
         name: parsed.name || 'Unnamed Rule',
         enabled: parsed.enabled ?? true,
         priority: Number(parsed.priority ?? 10),
-        cooldownSeconds: parsed.cooldownSeconds ? Number(parsed.cooldownSeconds) : undefined,
+        cooldownMs: Number(parsed.cooldownMs ?? (parsed.cooldownSeconds ? Number(parsed.cooldownSeconds) * 1000 : 0)),
         matcher: parsed.matcher || {},
         action: parsed.action || { actionType: 'execute_command', command: 'say Hi' },
       };

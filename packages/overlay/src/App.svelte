@@ -1,5 +1,13 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import Dashboard from './Dashboard.svelte';
+
+  let isDashboard = $state(
+    typeof window !== 'undefined' &&
+    (window.location.pathname.startsWith('/dashboard') ||
+      window.location.search.includes('view=dashboard') ||
+      window.location.hash.includes('dashboard'))
+  );
 
   interface StreamUser {
     id: string;
@@ -374,6 +382,14 @@
   });
 </script>
 
+{#if isDashboard}
+  <Dashboard
+    onSwitchToOverlay={() => {
+      isDashboard = false;
+      window.history.pushState({}, '', '/');
+    }}
+  />
+{:else}
 <div class="overlay-root" id="chaos-overlay-container">
   <!-- Top Header Status Bar -->
   <header class="status-bar glass-panel" id="overlay-status-bar">
@@ -408,6 +424,18 @@
       <span class="counter-label">EVENTS</span>
       <span class="counter-val">{totalEventsReceived}</span>
     </div>
+
+    <button
+      id="btn-goto-dashboard"
+      class="dashboard-launcher-btn"
+      onclick={() => {
+        isDashboard = true;
+        window.history.pushState({}, '', '/dashboard');
+      }}
+      title="Open Streamer Dashboard"
+    >
+      ⚙️ Dashboard
+    </button>
   </header>
 
   <!-- Left: Live Event Feed -->
@@ -550,6 +578,7 @@
     </div>
   {/if}
 </div>
+{/if}
 
 <style>
   .overlay-root {
@@ -693,6 +722,26 @@
   .counter-val {
     color: var(--accent-cyan);
     font-weight: 700;
+  }
+
+  .dashboard-launcher-btn {
+    background: rgba(0, 240, 255, 0.12);
+    border: 1px solid rgba(0, 240, 255, 0.3);
+    color: var(--accent-cyan);
+    padding: 6px 12px;
+    border-radius: 8px;
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    white-space: nowrap;
+  }
+
+  .dashboard-launcher-btn:hover {
+    background: var(--accent-cyan);
+    color: #000;
+    box-shadow: 0 0 12px rgba(0, 240, 255, 0.5);
   }
 
   /* Event Feed */

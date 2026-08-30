@@ -20,6 +20,7 @@ describe('REST Management API', () => {
         name: 'Test Rule 1',
         priority: 10,
         enabled: true,
+        cooldownMs: 0,
         matcher: { eventTypes: ['gift'] },
         action: { actionType: 'execute_command', command: 'say Gift!' },
       },

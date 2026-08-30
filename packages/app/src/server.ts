@@ -309,8 +309,8 @@ export class WebSocketHub {
       return;
     }
 
-    // Static overlay files
-    if (pathname === '/' || pathname === '/overlay') {
+    // Static overlay and dashboard files
+    if (pathname === '/' || pathname === '/overlay' || pathname === '/dashboard') {
       pathname = '/index.html';
     }
 
