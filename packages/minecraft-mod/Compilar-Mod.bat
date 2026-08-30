@@ -52,14 +52,14 @@ if errorlevel 1 goto build_error
 
 echo.
 echo [2/2] ¡Compilacion exitosa!
-if exist "build\libs\chaoslive-mod-1.0.0.jar" (
-    echo Mod generado en: build\libs\chaoslive-mod-1.0.0.jar
-    echo.
-    echo Copiando automaticamente a tu carpeta de Minecraft (%APPDATA%\.minecraft\mods)...
-    mkdir "%APPDATA%\.minecraft\mods" >nul 2>&1
-    copy /y "build\libs\chaoslive-mod-1.0.0.jar" "%APPDATA%\.minecraft\mods\" >nul
-    echo.
-    echo [OK] ¡Mod instalado exitosamente en tu Minecraft!
+for %%F in ("build\libs\*.jar") do (
+    echo %%~nxF | findstr /i /v "sources" >nul
+    if not errorlevel 1 (
+        echo Copiando %%~nxF a %APPDATA%\.minecraft\mods...
+        mkdir "%APPDATA%\.minecraft\mods" >nul 2>&1
+        copy /y "%%F" "%APPDATA%\.minecraft\mods\" >nul
+        echo [OK] ¡Mod %%~nxF instalado exitosamente en %APPDATA%\.minecraft\mods!
+    )
 )
 goto finish
 
