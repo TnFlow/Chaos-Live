@@ -94,6 +94,9 @@ export interface ChaosEvent<T extends EventType = EventType> {
   /** Unique event ID (UUID v4). Used as correlation ID across the full pipeline. */
   readonly id: string;
 
+  /** Multi-tenant tenant/streamer identifier (defaults to "default" in single-tenant mode). */
+  readonly tenantId?: string;
+
   /** Source streaming platform. */
   readonly platform: Platform;
 

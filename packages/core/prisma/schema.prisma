@@ -7,8 +7,40 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+model Tenant {
+  id          String   @id @default(uuid())
+  slug        String   @unique
+  name        String
+  plan        String   @default("free") // "free", "creator", "pro"
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  credentials StreamerCredential[]
+
+  @@index([slug])
+}
+
+model StreamerCredential {
+  id           String    @id @default(uuid())
+  tenantId     String
+  platform     String    // "twitch", "tiktok", "youtube"
+  accessToken  String
+  refreshToken String?
+  tokenExpires DateTime?
+  channelId    String?
+  channelName  String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  tenant       Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, platform])
+}
+
 model Goal {
   id            String   @id @default(uuid())
+  tenantId      String   @default("default")
   name          String
   eventType     String   // e.g. "gift", "like"
   targetValue   Int
@@ -19,11 +51,12 @@ model Goal {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
-  @@index([eventType, completed])
+  @@index([tenantId, eventType, completed])
 }
 
 model ProcessedEvent {
   id               String   @id // correlationId (ChaosEvent.id)
+  tenantId         String   @default("default")
   platform         String
   eventType        String
   userId           String
@@ -36,14 +69,17 @@ model ProcessedEvent {
   durationMs       Int?
   createdAt        DateTime @default(now())
 
-  @@index([eventType, createdAt])
+  @@index([tenantId, eventType, createdAt])
 }
 
 model SessionStat {
   id            String    @id @default(uuid())
+  tenantId      String    @default("default")
   startedAt     DateTime  @default(now())
   endedAt       DateTime?
   totalEvents   Int       @default(0)
   totalGifts    Int       @default(0)
   totalDiamonds Int       @default(0)
+
+  @@index([tenantId])
 }

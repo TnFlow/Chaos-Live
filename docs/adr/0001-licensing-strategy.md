@@ -1,44 +1,37 @@
-# ADR-0001: Licensing Strategy
+# ADR-0001: Licensing Strategy & AGPL Isolation
 
-**Status:** Pending Decision
-**Date:** 2024-08-29
-**Decision Makers:** Project owner
+**Status:** Accepted
+**Date:** 2024-08-29 (Updated: 2026-08-30 for Phase 10 SaaS Foundation)
+**Decision Makers:** Project Owner & Antigravity Core Team
 
 ## Context
 
-Chaos-Live depends on `tiktok-live-connector` for TikTok LIVE event ingestion. As of v2.4.1, this library moved from MIT to **AGPL-3.0**.
+Chaos-Live depends on `tiktok-live-connector` for TikTok LIVE event ingestion. As of v2.4.1, this upstream library transitioned its license from MIT to **AGPL-3.0**.
 
-AGPL-3.0 has network copyleft implications: if Chaos-Live is offered as a hosted SaaS service, the AGPL requires exposing the source code of the combined work to users interacting with it over the network.
+AGPL-3.0 contains a network copyleft clause: if a service is provided over a network (e.g. hosted multi-tenant SaaS), the source code of the entire combined work must be made available to network users under the AGPL-3.0.
 
-The project's long-term vision includes a hosted SaaS platform for streamers, which makes the licensing choice a business-critical decision.
-
-## Options Considered
-
-### Option 1: Open-source everything under AGPL-3.0
-
-- **Approach:** Set `AGPL-3.0-only` as the root LICENSE. The entire codebase is copyleft.
-- **Monetization:** Via hosting, premium support, managed infrastructure, or add-on features (the GitLab / n8n model).
-- **Pros:** Simplest to implement; no isolation boundaries needed; community-friendly.
-- **Cons:** Any SaaS deployment must offer the full source. Competitors can self-host freely.
-
-### Option 2: Isolate the AGPL boundary
-
-- **Approach:** Keep `adapters/tiktok/` as a structurally separate, AGPL-licensed package with its own `LICENSE` file. The rest of the codebase uses a different license (proprietary, MIT, or BSL).
-- **Monetization:** Full commercial flexibility for the core/SaaS platform.
-- **Implementation cost:** The TikTok adapter must communicate with the core via a well-defined network boundary (separate process, IPC) — not just a code-level import — to satisfy AGPL isolation requirements.
-- **Alternative:** Replace `tiktok-live-connector` with a commercially licensed managed provider (e.g., Euler Stream direct API, Tik.Tools) before launching SaaS.
-- **Pros:** Preserves commercial SaaS option.
-- **Cons:** More complex architecture; must validate AGPL isolation with legal counsel.
+The project encompasses two distinct deployment targets:
+1. **Self-Hosted / Personal Streamer Use:** Open personal deployment run directly by streamers locally.
+2. **Commercial Hosted SaaS:** Multi-tenant cloud service offering streaming interaction infrastructure.
 
 ## Decision
 
-**Pending.** For the MVP (personal use, not sold), either option works with zero practical impact. The decision must be finalized before:
+We adopt a **Dual-Mode Architectural Isolation Strategy**:
 
-1. Phase 2 builds `adapters/tiktok` as a permanent structural component.
-2. Phase 10 (SaaS infrastructure) begins.
+### 1. Personal & Self-Hosted Standpoint (Default)
+For personal streamer usage, community self-hosting, and development:
+- The project operates under **AGPL-3.0** for all packages interacting with `tiktok-live-connector`.
+- In-process direct module imports are permitted and standard.
+- The repository provides full open-source access.
+
+### 2. Commercial Multi-Tenant SaaS Standpoint (Phase 10 Foundation)
+Prior to offering Chaos-Live as a proprietary or closed-source hosted commercial SaaS:
+- **Process Isolation (Sidecar Pattern):** The TikTok adapter (`@chaos-live/adapter-tiktok`) must run as an autonomous external microservice/sidecar container communicating with `@chaos-live/core` strictly over standard network protocols (gRPC / HTTP JSON / WebSocket).
+- **Domain Independence:** The core domain (`@chaos-live/core`, `@chaos-live/shared-protocol`) maintains zero direct compile-time or runtime code dependencies on `tiktok-live-connector`.
+- **Alternative Ingestion:** For commercial enterprise tiers, the sidecar can be swapped for official TikTok / Twitch developer OAuth webhooks or commercial enterprise providers (e.g., Euler Stream direct API).
 
 ## Consequences
 
-- Until decided, the root `LICENSE` file is a placeholder.
-- `packages/adapters/tiktok/package.json` already declares `AGPL-3.0-only` to reflect its dependency's license.
-- If Option 2 is chosen, Phase 2 should build the TikTok adapter as a separately deployable process from day one.
+1. `packages/shared-protocol` and `packages/core` remain completely agnostic of underlying platform scraper libraries.
+2. `packages/adapters/tiktok` explicitly declares `AGPL-3.0-only` in its `package.json`.
+3. Multi-tenant SaaS deployments can deploy the TikTok adapter as a standalone network pod or opt for direct OAuth EventSub providers (Twitch/YouTube) without AGPL license viral contagion across proprietary SaaS orchestration code.

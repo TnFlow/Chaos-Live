@@ -50,4 +50,18 @@ export {
   recordProcessedEvent,
 } from './db/client.js';
 
+// Multi-Tenant SaaS Foundation
+export {
+  type TenantConfig,
+  type TenantContext,
+} from './tenant/tenant-context.js';
+export {
+  TenantManager,
+} from './tenant/tenant-manager.js';
+export {
+  PrismaTokenVault,
+  type TokenVault,
+  type OAuthTokenRecord,
+} from './tenant/token-vault.js';
+
 

@@ -28,6 +28,9 @@ export interface GameAction {
   /** Correlation ID — matches the originating ChaosEvent.id. */
   readonly id: string;
 
+  /** Multi-tenant tenant/streamer identifier (defaults to "default" in single-tenant mode). */
+  readonly tenantId?: string;
+
   /** The type of action to perform. */
   readonly actionType: ActionType;
 
