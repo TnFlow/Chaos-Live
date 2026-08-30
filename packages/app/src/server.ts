@@ -61,12 +61,17 @@ export class WebSocketHub {
 
     const possiblePaths = [
       config.staticDir,
+      process.env.STATIC_DIR,
+      path.resolve(process.cwd(), 'overlay'),
+      path.resolve(process.cwd(), 'overlay/dist'),
       path.resolve(process.cwd(), 'packages/overlay/dist'),
       path.resolve(process.cwd(), '../overlay/dist'),
+      path.resolve(__dirname, '../overlay'),
       path.resolve(__dirname, '../../overlay/dist'),
+      path.resolve(__dirname, '../../../packages/overlay/dist'),
     ].filter(Boolean) as string[];
 
-    let resolvedDir = possiblePaths[0]!;
+    let resolvedDir = possiblePaths[0] || path.resolve(process.cwd(), 'overlay');
     for (const p of possiblePaths) {
       if (fs.existsSync(p) && fs.existsSync(path.join(p, 'index.html'))) {
         resolvedDir = p;
