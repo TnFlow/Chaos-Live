@@ -32,6 +32,7 @@ export class EventEngine {
   private readonly listeners: Set<PipelineListener> = new Set();
 
   private isRunning = false;
+  private isPausedState = false;
   private dispatchTimer?: ReturnType<typeof setInterval>;
   private isDispatching = false;
 
@@ -71,12 +72,32 @@ export class EventEngine {
     this.gameAdapter = adapter;
   }
 
-  public getRuleEvaluator(): RuleEvaluator {
-    return this.ruleEvaluator;
+  public pause(): void {
+    this.isPausedState = true;
+  }
+
+  public resume(): void {
+    this.isPausedState = false;
+  }
+
+  public isPaused(): boolean {
+    return this.isPausedState;
+  }
+
+  public getPlatformAdapters(): PlatformAdapter[] {
+    return Array.from(this.platformAdapters);
+  }
+
+  public getGameAdapter(): GameAdapter | undefined {
+    return this.gameAdapter;
   }
 
   public getQueue(): QueuePort {
     return this.queue;
+  }
+
+  public getRuleEvaluator(): RuleEvaluator {
+    return this.ruleEvaluator;
   }
 
   public addListener(listener: PipelineListener): void {
@@ -239,7 +260,7 @@ export class EventEngine {
    * Processes available actions in the queue and dispatches them to the GameAdapter.
    */
   public async processQueue(): Promise<void> {
-    if (this.isDispatching || !this.gameAdapter || !this.gameAdapter.isConnected()) {
+    if (this.isPausedState || this.isDispatching || !this.gameAdapter || !this.gameAdapter.isConnected()) {
       return;
     }
 

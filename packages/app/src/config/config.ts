@@ -29,7 +29,7 @@ export interface AppConfig {
   rules: RuleDefinition[];
 }
 
-export function loadRules(rulesFilePath?: string): RuleDefinition[] {
+export function getRulesPath(rulesFilePath?: string): string {
   const possiblePaths = [
     rulesFilePath,
     path.resolve(process.cwd(), 'packages/app/config/rules.json'),
@@ -37,13 +37,16 @@ export function loadRules(rulesFilePath?: string): RuleDefinition[] {
     path.resolve(__dirname, '../../config/rules.json'),
   ].filter(Boolean) as string[];
 
-  let targetPath = possiblePaths[0]!;
   for (const p of possiblePaths) {
     if (fs.existsSync(p)) {
-      targetPath = p;
-      break;
+      return p;
     }
   }
+  return possiblePaths[0]!;
+}
+
+export function loadRules(rulesFilePath?: string): RuleDefinition[] {
+  const targetPath = getRulesPath(rulesFilePath);
 
   if (!fs.existsSync(targetPath)) {
     logger.warn({ targetPath }, 'Rules file does not exist, starting with empty rules.');
@@ -59,6 +62,18 @@ export function loadRules(rulesFilePath?: string): RuleDefinition[] {
   } catch (err) {
     logger.error({ err, targetPath }, 'Failed to parse rules file');
     return [];
+  }
+}
+
+export function saveRules(rules: RuleDefinition[], rulesFilePath?: string): void {
+  const targetPath = getRulesPath(rulesFilePath);
+  try {
+    fs.mkdirSync(path.dirname(targetPath), { recursive: true });
+    fs.writeFileSync(targetPath, JSON.stringify(rules, null, 2), 'utf-8');
+    logger.info({ count: rules.length, path: targetPath }, 'Saved rules configuration');
+  } catch (err) {
+    logger.error({ err, targetPath }, 'Failed to save rules file');
+    throw err;
   }
 }
 

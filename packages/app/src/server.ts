@@ -32,6 +32,7 @@ export interface WebSocketHubConfig {
   staticDir?: string;
   onClientConnected?: (socket: WebSocket, client: ConnectedClient) => void;
   onModActionResult?: (result: ModActionResult) => void;
+  onHttpRequest?: (req: http.IncomingMessage, res: http.ServerResponse) => Promise<boolean> | boolean;
 }
 
 /**
@@ -46,6 +47,7 @@ export class WebSocketHub {
   private readonly staticDir: string;
   private readonly onClientConnected?: (socket: WebSocket, client: ConnectedClient) => void;
   private readonly onModActionResult?: (result: ModActionResult) => void;
+  private readonly onHttpRequest?: (req: http.IncomingMessage, res: http.ServerResponse) => Promise<boolean> | boolean;
 
   private server?: http.Server;
   private wss?: WebSocketServer;
@@ -55,6 +57,7 @@ export class WebSocketHub {
     this.port = config.port;
     this.onClientConnected = config.onClientConnected;
     this.onModActionResult = config.onModActionResult;
+    this.onHttpRequest = config.onHttpRequest;
 
     const possiblePaths = [
       config.staticDir,
@@ -76,7 +79,15 @@ export class WebSocketHub {
 
   public async start(): Promise<void> {
     return new Promise((resolve, reject) => {
-      this.server = http.createServer((req, res) => {
+      this.server = http.createServer(async (req, res) => {
+        if (this.onHttpRequest) {
+          try {
+            const handled = await this.onHttpRequest(req, res);
+            if (handled) return;
+          } catch (err) {
+            logger.error({ err }, 'Error in onHttpRequest hook');
+          }
+        }
         this.handleHttpRequest(req, res);
       });
 

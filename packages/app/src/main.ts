@@ -13,6 +13,7 @@ import { RconAdapter } from '@chaos-live/adapter-minecraft-rcon';
 import type { GameAction, ActionResult, ChaosEvent } from '@chaos-live/shared-protocol';
 import { loadConfig } from './config/config.js';
 import { WebSocketHub } from './server.js';
+import { handleApiRequest } from './api/router.js';
 import { HybridGameAdapter } from './adapters/hybrid-game-adapter.js';
 import { logger } from './logger.js';
 
@@ -107,12 +108,25 @@ async function bootstrap(): Promise<void> {
   // Cache recent events in-memory to pair with action results for database persistence
   const recentEvents = new Map<string, ChaosEvent>();
 
-  // Declare hybrid game adapter reference
+  // Declare hybrid game adapter and engine references
   let hybridAdapter: HybridGameAdapter;
+  let engine: EventEngine;
 
-  // Initialize WebSocket Hub for OBS Overlay and Fabric Mod
+  // Initialize WebSocket Hub for OBS Overlay, Fabric Mod, and REST API
   const wsHub = new WebSocketHub({
     port: config.wsPort,
+    onHttpRequest: (req, res) => {
+      return handleApiRequest(req, res, {
+        engine,
+        ruleEvaluator,
+        goalEngine,
+        wsHub,
+        queue,
+        onInjectEvent: (event) => {
+          void engine.handleEvent(event);
+        },
+      });
+    },
     onClientConnected: (socket, client) => {
       if (client.clientType === 'overlay') {
         socket.send(
@@ -208,7 +222,7 @@ async function bootstrap(): Promise<void> {
     }
   });
 
-  const engine = new EventEngine({
+  engine = new EventEngine({
     ruleEvaluator,
     queue,
     gameAdapter,
