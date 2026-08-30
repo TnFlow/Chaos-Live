@@ -38,6 +38,10 @@ docker-data/
 # Test coverage
 coverage/
 
+# Distribution & Releases
+release/
+
+
 # Gradle & Fabric build
 .gradle/
 build/
