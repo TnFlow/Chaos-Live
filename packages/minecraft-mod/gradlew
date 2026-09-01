@@ -24,10 +24,29 @@ DEFAULT_JVM_OPTS='"-Xmx64m" "-Xms64m"'
 
 CLASSPATH=$APP_HOME/gradle/wrapper/gradle-wrapper.jar
 
+# For MinGW / MSYS / Git Bash / Cygwin on Windows, convert POSIX path to Windows format
+case "`uname 2>/dev/null`" in
+  CYGWIN* | MINGW* | MSYS* )
+    if command -v cygpath >/dev/null 2>&1 ; then
+        CLASSPATH=$(cygpath -w "$CLASSPATH")
+    else
+        case "$CLASSPATH" in
+          /[a-zA-Z]/*)
+            _drive=$(echo "$CLASSPATH" | cut -d/ -f2)
+            _rest=$(echo "$CLASSPATH" | cut -d/ -f3-)
+            CLASSPATH="${_drive}:/${_rest}"
+            ;;
+        esac
+    fi
+    ;;
+esac
+
 # Determine the Java command to use to start the JVM.
 if [ -n "$JAVA_HOME" ] ; then
     if [ -x "$JAVA_HOME/jre/sh/java" ] ; then
         JAVACMD=$JAVA_HOME/jre/sh/java
+    elif [ -x "$JAVA_HOME/bin/java.exe" ] ; then
+        JAVACMD="$JAVA_HOME/bin/java.exe"
     else
         JAVACMD=$JAVA_HOME/bin/java
     fi

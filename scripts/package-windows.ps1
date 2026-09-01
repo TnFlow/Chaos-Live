@@ -21,13 +21,24 @@ Write-Host ">>> Syncing Rules & Configuration..." -ForegroundColor Cyan
 Copy-Item -Force "$RootDir\packages\app\config\rules.json" "$ReleaseDir\config\rules.json"
 
 Write-Host ">>> Syncing Minecraft Mod Wrapper..." -ForegroundColor Cyan
-New-Item -ItemType Directory -Force -Path "$ReleaseDir\minecraft-mod\gradle\wrapper" | Out-Null
-Copy-Item -Force "$RootDir\packages\minecraft-mod\gradle\wrapper\gradle-wrapper.jar" "$ReleaseDir\minecraft-mod\gradle\wrapper\"
-Copy-Item -Force "$RootDir\packages\minecraft-mod\Compilar-Mod.bat" "$ReleaseDir\minecraft-mod\"
+$ModReleaseDir = "$ReleaseDir\minecraft-mod"
+New-Item -ItemType Directory -Force -Path "$ModReleaseDir\gradle\wrapper" | Out-Null
+Copy-Item -Force "$RootDir\packages\minecraft-mod\gradle\wrapper\gradle-wrapper.jar" "$ModReleaseDir\gradle\wrapper\"
+Copy-Item -Force "$RootDir\packages\minecraft-mod\gradle\wrapper\gradle-wrapper.properties" "$ModReleaseDir\gradle\wrapper\"
+Copy-Item -Force "$RootDir\packages\minecraft-mod\Compilar-Mod.bat" "$ModReleaseDir\"
+Copy-Item -Force "$RootDir\packages\minecraft-mod\gradlew.bat" "$ModReleaseDir\"
+Copy-Item -Force "$RootDir\packages\minecraft-mod\gradlew.ps1" "$ModReleaseDir\"
+Copy-Item -Force "$RootDir\packages\minecraft-mod\gradlew" "$ModReleaseDir\"
+Copy-Item -Force "$RootDir\packages\minecraft-mod\build.gradle" "$ModReleaseDir\"
+Copy-Item -Force "$RootDir\packages\minecraft-mod\settings.gradle" "$ModReleaseDir\"
+Copy-Item -Force "$RootDir\packages\minecraft-mod\gradle.properties" "$ModReleaseDir\"
+Copy-Item -Force "$RootDir\packages\minecraft-mod\README.md" "$ModReleaseDir\"
+New-Item -ItemType Directory -Force -Path "$ModReleaseDir\src" | Out-Null
+Copy-Item -Recurse -Force "$RootDir\packages\minecraft-mod\src\*" "$ModReleaseDir\src\"
 
 Write-Host ">>> Creating ZIP Archive: $ZipFile..." -ForegroundColor Cyan
 if (Test-Path $ZipFile) { Remove-Item $ZipFile -Force }
-Compress-Archive -Path $ReleaseDir -DestinationPath $ZipFile -Force
+tar.exe --exclude="minecraft-mod/.gradle" --exclude="minecraft-mod/build" -a -c -f $ZipFile -C $ReleaseDir *
 
 $SizeMB = [math]::Round((Get-Item $ZipFile).Length / 1MB, 2)
 Write-Host ">>> [SUCCESS] Package created: $ZipFile ($SizeMB MB)" -ForegroundColor Green
