@@ -135,6 +135,33 @@ async function bootstrap(): Promise<void> {
             payload: goalEngine.getGoals(),
           }),
         );
+        socket.send(
+          JSON.stringify({
+            type: 'INITIAL_RULES',
+            payload: ruleEvaluator.getRules(),
+          }),
+        );
+        socket.send(
+          JSON.stringify({
+            type: 'INITIAL_OVERLAY_SETTINGS',
+            payload: {
+              layout: 'landscape',
+              theme: 'cyberpunk',
+              scale: 1.0,
+              masterVolume: 0.8,
+              soundEnabled: true,
+              goalPosition: 'top',
+              feedPosition: 'left',
+              leaderboardPosition: 'right',
+              rewardsMode: 'both',
+              marqueeSpeedSeconds: 28,
+              glassIntensity: 0.75,
+              glowIntensity: 0.8,
+              fontFamily: 'Outfit',
+              bannerDurationSeconds: 4.8,
+            },
+          }),
+        );
       }
     },
     onModActionResult: (result) => {
@@ -266,6 +293,9 @@ async function bootstrap(): Promise<void> {
             correlationId,
             actionType: details?.['actionType'],
             command: details?.['command'],
+            icon: details?.['icon'],
+            imageUrl: details?.['imageUrl'],
+            viewerFeedback: details?.['viewerFeedback'],
           });
           break;
         case 'EVENT_COMPLETED': {

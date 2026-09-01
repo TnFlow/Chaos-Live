@@ -1,5 +1,5 @@
 // Domain models
-export type { RuleDefinition, EventMatcher, ActionTemplate } from './rule-definition.js';
+export type { RuleDefinition, EventMatcher, ActionTemplate, ViewerFeedback } from './rule-definition.js';
 export type { PipelineState, PipelineLogEntry } from './pipeline-state.js';
 
 // Port interfaces

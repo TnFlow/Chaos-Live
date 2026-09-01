@@ -18,6 +18,23 @@ export interface ApiContext {
   onInjectEvent?: (event: ChaosEvent) => void;
 }
 
+let currentOverlaySettings: Record<string, any> = {
+  layout: 'landscape',
+  theme: 'cyberpunk',
+  scale: 1.0,
+  masterVolume: 0.8,
+  soundEnabled: true,
+  goalPosition: 'top',
+  feedPosition: 'left',
+  leaderboardPosition: 'right',
+  rewardsMode: 'both',
+  marqueeSpeedSeconds: 28,
+  glassIntensity: 0.75,
+  glowIntensity: 0.8,
+  fontFamily: 'Outfit',
+  bannerDurationSeconds: 4.8,
+};
+
 function sendJson(res: http.ServerResponse, statusCode: number, data: unknown): void {
   res.writeHead(statusCode, {
     'Content-Type': 'application/json; charset=utf-8',
@@ -104,6 +121,30 @@ export async function handleApiRequest(
       return true;
     }
 
+    // GET /api/gifts/presets (TikTok gift catalog)
+    if (pathname === '/api/gifts/presets' && method === 'GET') {
+      const presets = [
+        { name: 'Rose', coins: 1, icon: '🌹', category: 'cheap', suggestedCommand: 'summon chicken ~ ~1 ~ {CustomName:\'"${user.displayName}\"\'}', feedback: '🌹 Sent a Rose!' },
+        { name: 'Ice Cream', coins: 30, icon: '🍦', category: 'cheap', suggestedCommand: 'summon zombie ~ ~ ~ {CustomName:\'"${user.displayName}\"\'}', feedback: '🍦 Sent an Ice Cream Cone!' },
+        { name: 'Doughnut', coins: 30, icon: '🍩', category: 'cheap', suggestedCommand: 'summon skeleton ~ ~ ~ {HandItems:[{id:"minecraft:bow",Count:1b},{}],CustomName:\'"${user.displayName}\"\'}', feedback: '🍩 Sent a Doughnut!' },
+        { name: 'Heart Me', coins: 1, icon: '💖', category: 'cheap', suggestedCommand: 'particle heart ~ ~1 ~ 0.5 0.5 0.5 0.1 10', feedback: '💖 Hearted the stream!' },
+        { name: 'Finger Heart', coins: 5, icon: '🫰', category: 'cheap', suggestedCommand: 'effect give @p minecraft:speed 10 1', feedback: '🫰 Sent a Finger Heart!' },
+        { name: 'Panda', coins: 5, icon: '🐼', category: 'cheap', suggestedCommand: 'summon panda ~ ~ ~', feedback: '🐼 Spawned a Panda!' },
+        { name: 'Sunglasses', coins: 199, icon: '🕶️', category: 'medium', suggestedCommand: 'summon phantom ~ ~5 ~ {CustomName:\'"${user.displayName}\"\'}', feedback: '🕶️ Feeling cool with Sunglasses!' },
+        { name: 'Boxing Gloves', coins: 299, icon: '🥊', category: 'medium', suggestedCommand: 'effect give @p minecraft:strength 20 2', feedback: '🥊 Knockout power active!' },
+        { name: 'Money Gun', coins: 500, icon: '💸', category: 'medium', suggestedCommand: 'give @p minecraft:emerald 16', feedback: '💸 Making it rain emeralds!' },
+        { name: 'Paper Crane', coins: 99, icon: '🕊️', category: 'medium', suggestedCommand: 'effect give @p minecraft:levitation 5 1', feedback: '🕊️ Floating with Paper Crane!' },
+        { name: 'Confetti', coins: 100, icon: '🎉', category: 'medium', suggestedCommand: 'particle firework ~ ~1 ~ 0.5 0.5 0.5 0.1 30', feedback: '🎉 Confetti party!' },
+        { name: 'Whale', coins: 2150, icon: '🐋', category: 'luxury', suggestedCommand: 'summon elder_guardian ~ ~ ~', feedback: '🐋 Deep ocean titan summoned!' },
+        { name: 'Lion', coins: 29999, icon: '🦁', category: 'luxury', suggestedCommand: 'summon creeper ~ ~ ~ {powered:1b,CustomName:\'"MEGA DONATION: ${user.displayName}"\'}', feedback: '🦁 KING OF THE JUNGLE LION!' },
+        { name: 'TikTok Universe', coins: 34999, icon: '🌌', category: 'luxury', suggestedCommand: 'summon warden ~ ~ ~ {CustomName:\'"UNIVERSE BOSS: ${user.displayName}"\'}', feedback: '🌌 TIKTOK UNIVERSE HAS AWOKEN!' },
+        { name: 'Dragon', coins: 26999, icon: '🐉', category: 'luxury', suggestedCommand: 'summon ender_dragon ~ ~10 ~', feedback: '🐉 THE ENDER DRAGON HAS SPAWNED!' },
+        { name: 'Galaxy', coins: 1000, icon: '🪐', category: 'luxury', suggestedCommand: 'summon lightning_bolt ~ ~ ~', feedback: '🪐 Galaxy cosmic strike!' },
+      ];
+      sendJson(res, 200, presets);
+      return true;
+    }
+
     // POST /api/rules (Create new rule)
     if (pathname === '/api/rules' && method === 'POST') {
       const raw = await readBody(req);
@@ -117,13 +158,68 @@ export async function handleApiRequest(
         cooldownMs: Number(parsed.cooldownMs ?? (parsed.cooldownSeconds ? Number(parsed.cooldownSeconds) * 1000 : 0)),
         matcher: parsed.matcher || {},
         action: parsed.action || { actionType: 'execute_command', command: 'say Hi' },
+        icon: parsed.icon || (parsed.matcher?.metadataMatch?.giftName === 'Rose' ? '🌹' : undefined),
+        imageUrl: parsed.imageUrl,
+        viewerFeedback: parsed.viewerFeedback,
       };
 
       const currentRules = [...context.ruleEvaluator.getRules(), newRule];
       context.ruleEvaluator.setRules(currentRules);
       saveRules(currentRules, context.rulesFilePath);
+      context.wsHub.broadcastToOverlay('INITIAL_RULES', currentRules);
 
       sendJson(res, 201, { success: true, rule: newRule });
+      return true;
+    }
+
+    // POST /api/rules/:id/test (Instantly test a rule with synthetic matching event)
+    if (pathname.startsWith('/api/rules/') && pathname.endsWith('/test') && method === 'POST') {
+      const id = pathname.slice('/api/rules/'.length, -'/test'.length);
+      const rule = context.ruleEvaluator.getRules().find((r) => r.id === id);
+
+      if (!rule) {
+        sendJson(res, 404, { error: `Rule with id "${id}" not found` });
+        return true;
+      }
+
+      // Synthesize event that satisfies the rule's matcher
+      const eventType = (rule.matcher.eventTypes && rule.matcher.eventTypes[0]) || 'gift';
+      const giftName = (rule.matcher.metadataMatch?.giftName as string) || (rule.icon ? rule.name.split(':')[1]?.trim() : 'Rose') || 'Rose';
+      const value = rule.matcher.minValue ?? (rule.matcher.maxValue ? Math.min(rule.matcher.maxValue, 100) : 50);
+
+      const syntheticEvent: ChaosEvent = {
+        id: `test-rule-${randomUUID().slice(0, 8)}`,
+        platform: (rule.matcher.platforms && rule.matcher.platforms[0] as any) || 'tiktok',
+        type: eventType as any,
+        user: { id: 'u-tester', displayName: 'StreamerTester' },
+        value,
+        metadata: {
+          giftName,
+          giftId: 999,
+          repeatCount: 1,
+          diamondCount: value,
+          likeCount: value,
+          text: 'Testing rule!',
+          ...(rule.matcher.metadataMatch || {}),
+        } as any,
+        raw: { isTest: true },
+        timestamp: Date.now(),
+      };
+
+      // Clear any cooldown for this specific rule to ensure test executes immediately
+      context.ruleEvaluator.resetCooldowns(rule.id);
+
+      if (context.onInjectEvent) {
+        context.onInjectEvent(syntheticEvent);
+      }
+      context.wsHub.broadcastEvent(syntheticEvent);
+
+      sendJson(res, 200, {
+        success: true,
+        message: `Tested rule "${rule.name}" successfully`,
+        ruleId: rule.id,
+        event: syntheticEvent,
+      });
       return true;
     }
 
@@ -150,6 +246,7 @@ export async function handleApiRequest(
       currentRules[index] = updatedRule;
       context.ruleEvaluator.setRules(currentRules);
       saveRules(currentRules, context.rulesFilePath);
+      context.wsHub.broadcastToOverlay('INITIAL_RULES', currentRules);
 
       sendJson(res, 200, { success: true, rule: updatedRule });
       return true;
@@ -168,6 +265,7 @@ export async function handleApiRequest(
 
       context.ruleEvaluator.setRules(filtered);
       saveRules(filtered, context.rulesFilePath);
+      context.wsHub.broadcastToOverlay('INITIAL_RULES', filtered);
 
       sendJson(res, 200, { success: true, deletedId: id });
       return true;
@@ -176,6 +274,29 @@ export async function handleApiRequest(
     // GET /api/goals
     if (pathname === '/api/goals' && method === 'GET') {
       sendJson(res, 200, context.goalEngine.getGoals());
+      return true;
+    }
+
+    // POST /api/goals (Create new community goal)
+    if (pathname === '/api/goals' && method === 'POST') {
+      const raw = await readBody(req);
+      const parsed = JSON.parse(raw);
+
+      const newGoal = context.goalEngine.addGoal({
+        name: parsed.name || 'Community Goal',
+        eventType: parsed.eventType || 'gift',
+        giftName: parsed.giftName,
+        targetValue: Number(parsed.targetValue || 50),
+        currentValue: Number(parsed.currentValue || 0),
+        actionCommand: parsed.actionCommand || 'say Community Goal Completed!',
+        actionType: parsed.actionType || 'execute_command',
+        unit: parsed.unit,
+        rewardDescription: parsed.rewardDescription,
+        repeatable: parsed.repeatable ?? true,
+      });
+
+      context.wsHub.broadcastToOverlay('INITIAL_GOALS', context.goalEngine.getGoals());
+      sendJson(res, 201, { success: true, goal: newGoal });
       return true;
     }
 
@@ -192,6 +313,66 @@ export async function handleApiRequest(
         sendJson(res, 200, { success: true, goal: updated });
         return true;
       }
+    }
+
+    // PUT /api/goals/:id (Update community goal)
+    if (pathname.startsWith('/api/goals/') && method === 'PUT') {
+      const id = pathname.slice('/api/goals/'.length);
+      const raw = await readBody(req);
+      const updates = JSON.parse(raw);
+
+      const updated = context.goalEngine.updateGoal(id, {
+        name: updates.name,
+        eventType: updates.eventType,
+        giftName: updates.giftName,
+        targetValue: updates.targetValue !== undefined ? Number(updates.targetValue) : undefined,
+        currentValue: updates.currentValue !== undefined ? Number(updates.currentValue) : undefined,
+        actionCommand: updates.actionCommand,
+        actionType: updates.actionType,
+        unit: updates.unit,
+        rewardDescription: updates.rewardDescription,
+        repeatable: updates.repeatable,
+      });
+
+      if (!updated) {
+        sendJson(res, 404, { error: `Goal with id "${id}" not found` });
+        return true;
+      }
+
+      context.wsHub.broadcastToOverlay('INITIAL_GOALS', context.goalEngine.getGoals());
+      sendJson(res, 200, { success: true, goal: updated });
+      return true;
+    }
+
+    // DELETE /api/goals/:id (Delete community goal)
+    if (pathname.startsWith('/api/goals/') && method === 'DELETE') {
+      const id = pathname.slice('/api/goals/'.length);
+      const deleted = context.goalEngine.deleteGoal(id);
+
+      if (!deleted) {
+        sendJson(res, 404, { error: `Goal with id "${id}" not found` });
+        return true;
+      }
+
+      context.wsHub.broadcastToOverlay('INITIAL_GOALS', context.goalEngine.getGoals());
+      sendJson(res, 200, { success: true, deletedId: id });
+      return true;
+    }
+
+    // GET /api/overlay-settings
+    if (pathname === '/api/overlay-settings' && method === 'GET') {
+      sendJson(res, 200, currentOverlaySettings);
+      return true;
+    }
+
+    // PUT /api/overlay-settings
+    if (pathname === '/api/overlay-settings' && method === 'PUT') {
+      const raw = await readBody(req);
+      const updates = JSON.parse(raw);
+      currentOverlaySettings = { ...currentOverlaySettings, ...updates };
+      context.wsHub.broadcastToOverlay('OVERLAY_SETTINGS_UPDATED', currentOverlaySettings);
+      sendJson(res, 200, { success: true, settings: currentOverlaySettings });
+      return true;
     }
 
     // GET /api/history (Audit trail from SQLite)

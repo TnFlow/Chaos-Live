@@ -12,8 +12,10 @@ describe('REST Management API', () => {
   let goalEngine: GoalEngine;
   let queue: InMemoryPriorityQueue;
   let initialRules: RuleDefinition[];
+  let currentOnInject: ((e: any) => void) | undefined = undefined;
 
   beforeEach(async () => {
+    currentOnInject = undefined;
     initialRules = [
       {
         id: 'rule-test-1',
@@ -45,6 +47,9 @@ describe('REST Management API', () => {
           wsHub: hub,
           queue,
           rulesFilePath: 'config/test-rules.json',
+          onInjectEvent: (e) => {
+            currentOnInject?.(e);
+          },
         });
       },
     });
@@ -153,26 +158,11 @@ describe('REST Management API', () => {
 
   it('POST /api/test/event injects a synthetic event', async () => {
     let injected: any = null;
+    currentOnInject = (e: any) => {
+      injected = e;
+    };
 
-    // Replace context to capture injected event
-    hub = new WebSocketHub({
-      port: 9879,
-      onHttpRequest: (req, res) => {
-        return handleApiRequest(req, res, {
-          engine,
-          ruleEvaluator,
-          goalEngine,
-          wsHub: hub,
-          queue,
-          onInjectEvent: (e) => {
-            injected = e;
-          },
-        });
-      },
-    });
-    await hub.start();
-
-    const res = await fetch('http://localhost:9879/api/test/event', {
+    const res = await fetch(`http://localhost:${testPort}/api/test/event`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -188,7 +178,34 @@ describe('REST Management API', () => {
     expect(injected).toBeDefined();
     expect(injected.value).toBe(50);
     expect(injected.user.displayName).toBe('ApiTester');
+  });
 
-    await hub.stop();
+  it('GET /api/gifts/presets returns TikTok gift catalog with suggested commands', async () => {
+    const res = await fetch(`http://localhost:${testPort}/api/gifts/presets`);
+    expect(res.status).toBe(200);
+
+    const presets = (await res.json()) as any[];
+    expect(Array.isArray(presets)).toBe(true);
+    expect(presets.length).toBeGreaterThanOrEqual(10);
+    expect(presets.some((p) => p.name === 'Rose' && p.icon === '🌹')).toBe(true);
+    expect(presets.some((p) => p.name === 'Lion' && p.icon === '🦁')).toBe(true);
+  });
+
+  it('POST /api/rules/:id/test synthesizes and injects a matching event for the rule', async () => {
+    let capturedEvent: any = null;
+    currentOnInject = (e: any) => {
+      capturedEvent = e;
+    };
+
+    const res = await fetch(`http://localhost:${testPort}/api/rules/rule-test-1/test`, {
+      method: 'POST',
+    });
+
+    expect(res.status).toBe(200);
+    const data = (await res.json()) as any;
+    expect(data.success).toBe(true);
+    expect(data.ruleId).toBe('rule-test-1');
+    expect(capturedEvent).toBeDefined();
+    expect(capturedEvent.type).toBe('gift');
   });
 });

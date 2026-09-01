@@ -1,126 +1,207 @@
 [
   {
-    "id": "rule-gift-rose",
-    "name": "Gift: Rose -> Summon Chicken",
-    "enabled": true,
-    "priority": 10,
-    "cooldownMs": 500,
-    "matcher": {
-      "eventTypes": ["gift"],
-      "metadataMatch": {
-        "giftName": "Rose"
-      }
-    },
-    "action": {
-      "actionType": "execute_command",
-      "command": "summon chicken ~ ~1 ~ {CustomName:'\"${user.displayName}\"'}"
-    }
-  },
-  {
-    "id": "rule-gift-icecream",
-    "name": "Gift: Ice Cream -> Summon Zombie",
-    "enabled": true,
-    "priority": 25,
-    "cooldownMs": 1000,
-    "matcher": {
-      "eventTypes": ["gift"],
-      "metadataMatch": {
-        "giftName": "Ice Cream"
-      }
-    },
-    "action": {
-      "actionType": "execute_command",
-      "command": "summon zombie ~ ~ ~ {CustomName:'\"${user.displayName}\"'}"
-    }
-  },
-  {
-    "id": "rule-gift-doughnut",
-    "name": "Gift: Doughnut -> Summon Skeleton with Bow",
-    "enabled": true,
-    "priority": 50,
-    "cooldownMs": 1000,
-    "matcher": {
-      "eventTypes": ["gift"],
-      "metadataMatch": {
-        "giftName": "Doughnut"
-      }
-    },
-    "action": {
-      "actionType": "execute_command",
-      "command": "summon skeleton ~ ~ ~ {HandItems:[{id:\"minecraft:bow\",Count:1b},{}],CustomName:'\"${user.displayName}\"'}"
-    }
-  },
-  {
     "id": "rule-gift-lion",
-    "name": "Gift: Lion -> Summon Powered Creeper",
+    "name": "Gift: Lion",
+    "priority": 50,
     "enabled": true,
-    "priority": 100,
     "cooldownMs": 0,
+    "icon": "🦁",
     "matcher": {
-      "eventTypes": ["gift"],
+      "platforms": [
+        "tiktok",
+        "twitch",
+        "mock"
+      ],
+      "eventTypes": [
+        "gift"
+      ],
       "metadataMatch": {
         "giftName": "Lion"
       }
     },
     "action": {
       "actionType": "execute_command",
-      "command": "summon creeper ~ ~ ~ {powered:1b,CustomName:'\"MEGA DONATION: ${user.displayName}\"'}"
+      "command": "execute at @p run summon creeper ~ ~ ~ {powered:1b,CustomName:'\"MEGA DONATION: ${user.displayName}\"'}"
+    },
+    "viewerFeedback": {
+      "title": "🦁 KING OF THE JUNGLE: LION!",
+      "description": "👑 MEGA DONATION: ${user.displayName} summoned a Charged Creeper!",
+      "bannerColor": "#f59e0b"
     }
   },
   {
-    "id": "rule-likes",
-    "name": "Likes -> Heart Particles",
+    "id": "rule-gift-money-gun",
+    "name": "Gift: Money Gun",
+    "priority": 25,
     "enabled": true,
-    "priority": 5,
-    "cooldownMs": 2000,
+    "cooldownMs": 0,
+    "icon": "💸",
     "matcher": {
-      "eventTypes": ["like"]
+      "platforms": [
+        "tiktok",
+        "twitch",
+        "mock"
+      ],
+      "eventTypes": [
+        "gift"
+      ],
+      "metadataMatch": {
+        "giftName": "Money Gun"
+      }
     },
     "action": {
       "actionType": "execute_command",
-      "command": "particle heart ~ ~1 ~ 0.5 0.5 0.5 0.1 5"
+      "command": "execute at @p run summon tnt ~ ~2 ~ {Fuse:40}"
+    },
+    "viewerFeedback": {
+      "title": "💸 MONEY GUN TNT EXPLOSION!",
+      "description": "${user.displayName} fired the Money Gun! Incoming TNT detonation!",
+      "bannerColor": "#10b981"
     }
   },
   {
-    "id": "rule-follow",
-    "name": "Follow -> Welcome Title",
-    "enabled": true,
+    "id": "rule-gift-ice-cream",
+    "name": "Gift: Ice Cream",
     "priority": 15,
-    "cooldownMs": 1000,
+    "enabled": true,
+    "cooldownMs": 0,
+    "icon": "🍦",
     "matcher": {
-      "eventTypes": ["follow"]
+      "platforms": [
+        "tiktok",
+        "twitch",
+        "mock"
+      ],
+      "eventTypes": [
+        "gift"
+      ],
+      "metadataMatch": {
+        "giftName": "Ice Cream"
+      }
     },
     "action": {
       "actionType": "execute_command",
-      "command": "title @a subtitle {\"text\":\"New follower: ${user.displayName}!\",\"color\":\"gold\"}"
+      "command": "execute at @p run summon zombie ~ ~ ~ {CustomName:'\"${user.displayName}\"'}"
+    },
+    "viewerFeedback": {
+      "title": "🍦 BRAAAINS! ICE CREAM ALERT!",
+      "description": "${user.displayName} unleashed a Zombie with an Ice Cream Cone!",
+      "bannerColor": "#06b6d4"
     }
   },
   {
-    "id": "rule-share",
-    "name": "Share -> Streamer Speed Buff",
+    "id": "rule-gift-doughnut",
+    "name": "Gift: Doughnut",
+    "priority": 15,
     "enabled": true,
-    "priority": 20,
-    "cooldownMs": 3000,
+    "cooldownMs": 0,
+    "icon": "🍩",
     "matcher": {
-      "eventTypes": ["share"]
+      "platforms": [
+        "tiktok",
+        "twitch",
+        "mock"
+      ],
+      "eventTypes": [
+        "gift"
+      ],
+      "metadataMatch": {
+        "giftName": "Doughnut"
+      }
     },
     "action": {
       "actionType": "execute_command",
-      "command": "effect give @a minecraft:speed 15 1"
+      "command": "execute at @p run summon skeleton ~ ~ ~ {HandItems:[{id:\"minecraft:bow\",Count:1b},{}],CustomName:'\"${user.displayName}\"'}"
+    },
+    "viewerFeedback": {
+      "title": "🍩 SKELETON SNIPER!",
+      "description": "${user.displayName} bought a Doughnut for a Skeleton Sniper!",
+      "bannerColor": "#f97316"
     }
   },
   {
-    "id": "rule-comment",
-    "name": "Chat -> In-Game Chat Message",
+    "id": "rule-gift-rose",
+    "name": "Gift: Rose",
+    "priority": 10,
     "enabled": true,
-    "priority": 2,
-    "cooldownMs": 500,
+    "cooldownMs": 0,
+    "icon": "🌹",
     "matcher": {
-      "eventTypes": ["comment"]
+      "platforms": [
+        "tiktok",
+        "twitch",
+        "mock"
+      ],
+      "eventTypes": [
+        "gift"
+      ],
+      "metadataMatch": {
+        "giftName": "Rose"
+      }
     },
     "action": {
       "actionType": "execute_command",
-      "command": "tellraw @a [{\"text\":\"[Stream] \",\"color\":\"aqua\"},{\"text\":\"${user.displayName}: \",\"color\":\"white\"},{\"text\":\"${metadata.text}\",\"color\":\"gray\"}]"
+      "command": "execute at @p run summon chicken ~ ~1 ~ {CustomName:'\"${user.displayName}\"'}"
+    },
+    "viewerFeedback": {
+      "title": "🌹 ROSE SHOWER!",
+      "description": "${user.displayName} sent a Rose! Clucking chicken appeared!",
+      "bannerColor": "#f43f5e"
+    }
+  },
+  {
+    "id": "rule-likes-streak",
+    "name": "Likes Streak (>= 100)",
+    "priority": 5,
+    "enabled": true,
+    "cooldownMs": 5000,
+    "icon": "❤️",
+    "matcher": {
+      "platforms": [
+        "tiktok",
+        "twitch",
+        "mock"
+      ],
+      "eventTypes": [
+        "like"
+      ],
+      "minValue": 100
+    },
+    "action": {
+      "actionType": "execute_command",
+      "command": "execute at @p run particle heart ~ ~1 ~ 1 1 1 0.1 20"
+    },
+    "viewerFeedback": {
+      "title": "❤️ 100+ LIKES CELEBRATION!",
+      "description": "${user.displayName} tapped 100+ likes! Love is in the air!",
+      "bannerColor": "#f43f5e"
+    }
+  },
+  {
+    "id": "rule-new-follow",
+    "name": "New Follower",
+    "priority": 5,
+    "enabled": true,
+    "cooldownMs": 2000,
+    "icon": "⭐",
+    "matcher": {
+      "platforms": [
+        "tiktok",
+        "twitch",
+        "mock"
+      ],
+      "eventTypes": [
+        "follow"
+      ]
+    },
+    "action": {
+      "actionType": "execute_command",
+      "command": "effect give @p minecraft:speed 10 1"
+    },
+    "viewerFeedback": {
+      "title": "⭐ NEW FOLLOWER!",
+      "description": "Welcome ${user.displayName}! Streamer gained Speed boost!",
+      "bannerColor": "#eab308"
     }
   }
 ]

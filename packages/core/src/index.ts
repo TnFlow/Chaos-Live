@@ -6,6 +6,7 @@ export type {
   RuleDefinition,
   EventMatcher,
   ActionTemplate,
+  ViewerFeedback,
   PipelineState,
   PipelineLogEntry,
   PlatformAdapter,

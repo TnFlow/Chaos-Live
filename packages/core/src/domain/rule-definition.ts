@@ -54,6 +54,21 @@ export interface ActionTemplate {
 }
 
 /**
+ * Viewer feedback customization for on-screen overlay display.
+ * Displayed to the stream audience when an action or gift triggers.
+ */
+export interface ViewerFeedback {
+  /** Title or headline displayed on stream overlay (e.g. "MEGA SUMMON!") */
+  readonly title?: string;
+  /** Detailed description shown on viewer feed/alert (supports variable interpolation) */
+  readonly description?: string;
+  /** Hex or CSS color for the viewer banner/alert (e.g. "#f43f5e") */
+  readonly bannerColor?: string;
+  /** Audio effect identifier or cue */
+  readonly soundEffect?: string;
+}
+
+/**
  * RuleDefinition — maps ChaosEvents to GameActions.
  *
  * Rules are loaded from config/rules.json and evaluated by the RuleEvaluator.
@@ -92,4 +107,20 @@ export interface RuleDefinition {
    * 0 = no cooldown.
    */
   readonly cooldownMs: number;
+
+  /**
+   * Emoji or short icon identifier for gifts/events (e.g., '🌹', '🍦', '🦁').
+   */
+  readonly icon?: string;
+
+  /**
+   * Custom image URL or data URL for custom gift icons.
+   */
+  readonly imageUrl?: string;
+
+  /**
+   * StreamToEarn-style personalized viewer feedback shown on stream.
+   */
+  readonly viewerFeedback?: ViewerFeedback;
 }
+

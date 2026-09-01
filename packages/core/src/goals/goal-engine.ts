@@ -13,6 +13,10 @@ export interface GoalConfig {
   currentValue?: number;
   actionCommand: string;
   actionType?: ActionType;
+  /** Optional display unit (e.g. "Roses", "Likes", "Diamonds"). */
+  unit?: string;
+  /** Optional reward description for viewers. */
+  rewardDescription?: string;
   /** If true, resets currentValue to 0 upon reaching target so the community can reach it repeatedly. Default: false. */
   repeatable?: boolean;
 }
@@ -22,6 +26,8 @@ export interface GoalState extends GoalConfig {
   currentValue: number;
   completed: boolean;
   actionType: ActionType;
+  unit: string;
+  rewardDescription: string;
 }
 
 export interface GoalProgressUpdate {
@@ -34,6 +40,7 @@ export interface GoalProgressUpdate {
   completed: boolean;
   justCompleted: boolean;
   triggeredAction?: GameAction;
+  rewardDescription?: string;
 }
 
 /**
@@ -54,6 +61,8 @@ export class GoalEngine {
         currentValue: g.currentValue ?? 0,
         completed: false,
         actionType: g.actionType ?? 'execute_command',
+        unit: g.unit || (g.eventType === 'like' ? 'Likes' : g.giftName ? `${g.giftName}s` : 'Points'),
+        rewardDescription: g.rewardDescription || 'Community Boss Event',
       });
     }
   }
@@ -81,6 +90,8 @@ export class GoalEngine {
             actionCommand: sg.actionCommand,
             actionType: (sg.actionType as ActionType) || 'execute_command',
             completed: sg.completed,
+            unit: 'Points',
+            rewardDescription: 'Community Boss Event',
           });
         }
       } else {
@@ -117,6 +128,63 @@ export class GoalEngine {
   }
 
   /**
+   * Adds a new community goal.
+   */
+  public addGoal(config: GoalConfig): GoalState {
+    const id = config.id || `goal-${randomUUID().slice(0, 8)}`;
+    const goal: GoalState = {
+      ...config,
+      id,
+      currentValue: config.currentValue ?? 0,
+      completed: false,
+      actionType: config.actionType ?? 'execute_command',
+      unit: config.unit || (config.eventType === 'like' ? 'Likes' : config.giftName ? `${config.giftName}s` : 'Points'),
+      rewardDescription: config.rewardDescription || 'Community Reward',
+    };
+    this.goals.set(id, goal);
+    void this.persistGoal(goal);
+    return goal;
+  }
+
+  /**
+   * Updates an existing community goal.
+   */
+  public updateGoal(id: string, updates: Partial<GoalConfig>): GoalState | undefined {
+    const goal = this.goals.get(id);
+    if (!goal) return undefined;
+
+    const updated: GoalState = {
+      ...goal,
+      ...updates,
+      id, // protect ID
+      currentValue: updates.currentValue !== undefined ? updates.currentValue : goal.currentValue,
+      targetValue: updates.targetValue !== undefined ? updates.targetValue : goal.targetValue,
+    };
+
+    if (updated.currentValue < updated.targetValue) {
+      updated.completed = false;
+    }
+
+    this.goals.set(id, updated);
+    void this.persistGoal(updated);
+    return updated;
+  }
+
+  /**
+   * Deletes a community goal.
+   */
+  public deleteGoal(id: string): boolean {
+    const existed = this.goals.delete(id);
+    if (existed) {
+      try {
+        const prisma = getPrismaClient();
+        void prisma.goal.delete({ where: { id } }).catch(() => {});
+      } catch {}
+    }
+    return existed;
+  }
+
+  /**
    * Evaluates an incoming ChaosEvent against registered goals.
    * Increments progress, updates database, and triggers GameAction upon target completion.
    */
@@ -129,14 +197,17 @@ export class GoalEngine {
       }
 
       // Check event type match
-      if (goal.eventType !== event.type) {
+      if ((goal.eventType as string) !== (event.type as string) && (goal.eventType as string) !== 'any') {
         continue;
       }
 
-      // If goal specifies a giftName, check metadata
+      // If goal specifies a giftName, check metadata with resilient case-insensitive match
       if (goal.giftName && event.type === 'gift') {
         const giftMeta = event.metadata as { giftName?: string };
-        if (giftMeta.giftName !== goal.giftName) {
+        const eventGift = giftMeta.giftName || '';
+        const goalGift = goal.giftName.trim().toLowerCase();
+        const evNorm = eventGift.trim().toLowerCase();
+        if (goalGift !== evNorm && !evNorm.includes(goalGift) && !goalGift.includes(evNorm)) {
           continue;
         }
       }
@@ -187,6 +258,7 @@ export class GoalEngine {
         completed: goal.completed,
         justCompleted,
         triggeredAction,
+        rewardDescription: goal.rewardDescription,
       });
 
       // Persist to SQLite in background

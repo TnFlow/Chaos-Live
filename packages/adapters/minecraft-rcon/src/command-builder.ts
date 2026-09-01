@@ -17,6 +17,7 @@ export const DEFAULT_ALLOWED_COMMANDS = new Set([
   'gamemode',
   'difficulty',
   'say',
+  'execute',
 ]);
 
 /**

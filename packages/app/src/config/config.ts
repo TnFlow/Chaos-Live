@@ -30,12 +30,15 @@ export interface AppConfig {
 }
 
 export function getRulesPath(rulesFilePath?: string): string {
+  if (rulesFilePath) {
+    return path.isAbsolute(rulesFilePath) ? rulesFilePath : path.resolve(process.cwd(), rulesFilePath);
+  }
+
   const possiblePaths = [
-    rulesFilePath,
     path.resolve(process.cwd(), 'packages/app/config/rules.json'),
     path.resolve(process.cwd(), 'config/rules.json'),
     path.resolve(__dirname, '../../config/rules.json'),
-  ].filter(Boolean) as string[];
+  ];
 
   for (const p of possiblePaths) {
     if (fs.existsSync(p)) {
@@ -78,10 +81,12 @@ export function saveRules(rules: RuleDefinition[], rulesFilePath?: string): void
 }
 
 export function loadConfig(): AppConfig {
-  const tiktokUsername = process.env.TIKTOK_USERNAME?.trim() || '';
+  const rawUsername = process.env.TIKTOK_USERNAME?.trim() || '';
+  const isPlaceholder = !rawUsername || rawUsername === 'your_tiktok_username';
+  const tiktokUsername = isPlaceholder ? '' : rawUsername;
   const useMockEnv = process.env.USE_MOCK?.toLowerCase();
-  // If USE_MOCK is explicitly true or no tiktok username is configured, default to mock
-  const useMock = useMockEnv === 'true' || useMockEnv === '1' || !tiktokUsername;
+  // If USE_MOCK is explicitly true or no real tiktok username is configured, default to mock
+  const useMock = useMockEnv === 'true' || useMockEnv === '1' || isPlaceholder;
 
   const mockIntervalMs = Number(process.env.MOCK_INTERVAL_MS || 2500);
   const logLevel = process.env.LOG_LEVEL || 'info';

@@ -295,6 +295,9 @@ export class EventEngine {
       details: {
         actionType: action.actionType,
         command: action.command,
+        icon: action.icon,
+        imageUrl: action.imageUrl,
+        viewerFeedback: action.viewerFeedback as unknown as Record<string, unknown>,
       },
     });
 

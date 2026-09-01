@@ -60,6 +60,26 @@ export interface GameAction {
 
   /** Unix timestamp in milliseconds when this action was created. */
   readonly timestamp: number;
+
+  /**
+   * Emoji or short icon identifier for gifts/events (e.g., '🌹', '🍦', '🦁').
+   */
+  readonly icon?: string;
+
+  /**
+   * Custom image URL or data URL for custom gift icons.
+   */
+  readonly imageUrl?: string;
+
+  /**
+   * Personalized viewer-facing feedback for on-screen alerts.
+   */
+  readonly viewerFeedback?: {
+    readonly title?: string;
+    readonly description?: string;
+    readonly bannerColor?: string;
+    readonly soundEffect?: string;
+  };
 }
 
 /**

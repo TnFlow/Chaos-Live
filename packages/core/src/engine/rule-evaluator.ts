@@ -151,6 +151,17 @@ export class RuleEvaluator {
       const command = interpolateString(rule.action.command, event);
       const payload = rule.action.payload ? interpolatePayload(rule.action.payload, event) : {};
 
+      // Interpolate viewer feedback if configured
+      let viewerFeedback: GameAction['viewerFeedback'] = undefined;
+      if (rule.viewerFeedback) {
+        viewerFeedback = {
+          title: rule.viewerFeedback.title ? interpolateString(rule.viewerFeedback.title, event) : undefined,
+          description: rule.viewerFeedback.description ? interpolateString(rule.viewerFeedback.description, event) : undefined,
+          bannerColor: rule.viewerFeedback.bannerColor,
+          soundEffect: rule.viewerFeedback.soundEffect,
+        };
+      }
+
       const action: GameAction = {
         id: event.id,
         actionType: rule.action.actionType,
@@ -158,6 +169,9 @@ export class RuleEvaluator {
         payload,
         priority: rule.priority,
         timestamp: now,
+        icon: rule.icon,
+        imageUrl: rule.imageUrl,
+        viewerFeedback,
       };
 
       return {
@@ -180,14 +194,21 @@ export class RuleEvaluator {
 
     // Event type matching
     if (matcher.eventTypes && matcher.eventTypes.length > 0) {
-      if (!matcher.eventTypes.includes(event.type)) {
+      const matchesType = matcher.eventTypes.some(
+        (t) => t === event.type || (t as string) === 'any',
+      );
+      if (!matchesType) {
         return false;
       }
     }
 
-    // Platform matching
+    // Platform matching (mock platform is compatible with all rules)
     if (matcher.platforms && matcher.platforms.length > 0) {
-      if (!matcher.platforms.includes(event.platform)) {
+      const platforms = matcher.platforms;
+      const matchesPlatform =
+        event.platform === 'mock' ||
+        platforms.some((p) => p === event.platform || (p as string) === 'all');
+      if (!matchesPlatform) {
         return false;
       }
     }
@@ -206,11 +227,26 @@ export class RuleEvaluator {
       }
     }
 
-    // Specific metadata matching
-    if (matcher.metadataMatch) {
+    // Specific metadata matching (resilient case-insensitive comparison for gifts)
+    if (matcher.metadataMatch && Object.keys(matcher.metadataMatch).length > 0) {
       const metadata = (event.metadata ?? {}) as Record<string, unknown>;
       for (const [key, expectedValue] of Object.entries(matcher.metadataMatch)) {
-        if (metadata[key] !== expectedValue) {
+        if (expectedValue === undefined || expectedValue === null || expectedValue === '') {
+          continue;
+        }
+
+        const actual = metadata[key];
+        if (actual === undefined || actual === null) {
+          return false;
+        }
+
+        if (typeof expectedValue === 'string' && typeof actual === 'string') {
+          const expNorm = expectedValue.trim().toLowerCase();
+          const actNorm = actual.trim().toLowerCase();
+          if (expNorm !== actNorm && !actNorm.includes(expNorm) && !expNorm.includes(actNorm)) {
+            return false;
+          }
+        } else if (Number(actual) !== Number(expectedValue) && actual !== expectedValue) {
           return false;
         }
       }

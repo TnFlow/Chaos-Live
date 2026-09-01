@@ -232,4 +232,119 @@ describe('RuleEvaluator', () => {
     expect(result.matchedRule?.id).toBe('rule-disabled');
     expect(result.action).toBeUndefined();
   });
+
+  it('interpolates and attaches personalized viewer feedback and icon/imageUrl to GameAction', () => {
+    const personalizedRule: RuleDefinition = {
+      id: 'rule-custom-lion',
+      name: 'Lion Gift',
+      enabled: true,
+      priority: 90,
+      cooldownMs: 0,
+      icon: '🦁',
+      imageUrl: 'https://cdn.example.com/lion.png',
+      matcher: {
+        eventTypes: ['gift'],
+        metadataMatch: { giftName: 'Lion' },
+      },
+      action: {
+        actionType: 'execute_command',
+        command: 'summon creeper ~ ~ ~ {powered:1b}',
+      },
+      viewerFeedback: {
+        title: '🦁 MEGA LION SUMMON!',
+        description: '${user.displayName} dropped a Lion (val: ${event.value})! Beware of charged creepers!',
+        bannerColor: '#f59e0b',
+        soundEffect: 'lion_roar',
+      },
+    };
+
+    const evaluator = new RuleEvaluator([personalizedRule]);
+    const lionEvent: ChaosEvent<'gift'> = {
+      id: 'evt-lion-1',
+      platform: 'tiktok',
+      type: 'gift',
+      user: { id: 'u-whale', displayName: 'KingStreamer' },
+      value: 1000,
+      metadata: {
+        giftName: 'Lion',
+        giftId: 999,
+        repeatCount: 1,
+        diamondCount: 1000,
+      },
+      raw: {},
+      timestamp: 1000,
+    };
+
+    const result = evaluator.evaluate(lionEvent);
+    expect(result.status).toBe('MATCHED');
+    expect(result.action).toBeDefined();
+    expect(result.action?.icon).toBe('🦁');
+    expect(result.action?.imageUrl).toBe('https://cdn.example.com/lion.png');
+    expect(result.action?.viewerFeedback).toEqual({
+      title: '🦁 MEGA LION SUMMON!',
+      description: 'KingStreamer dropped a Lion (val: 1000)! Beware of charged creepers!',
+      bannerColor: '#f59e0b',
+      soundEffect: 'lion_roar',
+    });
+  });
+
+  it('matches gifts case-insensitively and with partial prefix/suffix match', () => {
+    const iceCreamRule: RuleDefinition = {
+      id: 'rule-ice-cream',
+      name: 'Ice Cream Gift',
+      enabled: true,
+      priority: 50,
+      cooldownMs: 0,
+      matcher: {
+        platforms: ['tiktok'],
+        eventTypes: ['gift'],
+        metadataMatch: { giftName: 'Ice Cream' },
+      },
+      action: {
+        actionType: 'execute_command',
+        command: 'say Ice cream for ${user.displayName}',
+      },
+    };
+
+    const evaluator = new RuleEvaluator([iceCreamRule]);
+
+    // Test case 1: exact match in different case
+    const eventCase1: ChaosEvent<'gift'> = {
+      id: 'evt-ic-1',
+      platform: 'tiktok',
+      type: 'gift',
+      user: { id: 'u1', displayName: 'IceLover' },
+      value: 30,
+      metadata: { giftName: 'ice cream', giftId: 1, repeatCount: 1, diamondCount: 30 },
+      raw: {},
+      timestamp: 1000,
+    };
+    expect(evaluator.evaluate(eventCase1).status).toBe('MATCHED');
+
+    // Test case 2: TikTok sends "Ice Cream Cone" while rule specifies "Ice Cream"
+    const eventCase2: ChaosEvent<'gift'> = {
+      id: 'evt-ic-2',
+      platform: 'tiktok',
+      type: 'gift',
+      user: { id: 'u2', displayName: 'ConeFan' },
+      value: 30,
+      metadata: { giftName: 'Ice Cream Cone', giftId: 1, repeatCount: 1, diamondCount: 30 },
+      raw: {},
+      timestamp: 1000,
+    };
+    expect(evaluator.evaluate(eventCase2).status).toBe('MATCHED');
+
+    // Test case 3: Event on 'mock' platform matches rules configured for 'tiktok'
+    const mockEvent: ChaosEvent<'gift'> = {
+      id: 'evt-mock-1',
+      platform: 'mock',
+      type: 'gift',
+      user: { id: 'u3', displayName: 'SimulatorUser' },
+      value: 30,
+      metadata: { giftName: 'Ice Cream', giftId: 1, repeatCount: 1, diamondCount: 30 },
+      raw: {},
+      timestamp: 1000,
+    };
+    expect(evaluator.evaluate(mockEvent).status).toBe('MATCHED');
+  });
 });
