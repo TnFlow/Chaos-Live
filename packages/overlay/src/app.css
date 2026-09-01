@@ -35,14 +35,53 @@
 
 html,
 body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  min-height: 100%;
+  font-family: var(--font-body);
+  color: var(--text-main);
+  background: transparent;
+  overflow-x: hidden;
+}
+
+/* For pure OBS Browser Source overlay */
+body.overlay-mode {
   width: 100vw;
   height: 100vh;
   overflow: hidden;
-  /* Crucial for OBS Browser Source: transparent backdrop */
   background: transparent !important;
-  font-family: var(--font-body);
-  color: var(--text-main);
   user-select: none;
+}
+
+/* For Streamer Dashboard management: full vertical scrolling */
+body.dashboard-mode {
+  width: 100%;
+  min-height: 100vh;
+  height: auto;
+  overflow-y: auto !important;
+  overflow-x: hidden;
+  background: #090b10 !important;
+  user-select: auto;
+}
+
+/* Sleek custom scrollbars */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgba(15, 23, 42, 0.6);
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 240, 255, 0.5);
 }
 
 /* Glassmorphism Surface Base */
