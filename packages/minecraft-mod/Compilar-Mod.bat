@@ -51,14 +51,14 @@ call gradlew.bat build
 if errorlevel 1 goto build_error
 
 echo.
-echo [2/2] ¡Compilacion exitosa!
+echo [2/2] Compilacion exitosa!
 for %%F in ("build\libs\*.jar") do (
     echo %%~nxF | findstr /i /v "sources" >nul
     if not errorlevel 1 (
         echo Copiando %%~nxF a %APPDATA%\.minecraft\mods...
         mkdir "%APPDATA%\.minecraft\mods" >nul 2>&1
         copy /y "%%F" "%APPDATA%\.minecraft\mods\" >nul
-        echo [OK] ¡Mod %%~nxF instalado exitosamente en %APPDATA%\.minecraft\mods!
+        echo [OK] Mod %%~nxF instalado exitosamente en %APPDATA%\.minecraft\mods!
     )
 )
 goto finish
@@ -80,7 +80,7 @@ echo 2. Vuelve a ejecutar este archivo Compilar-Mod.bat
 echo.
 echo Opcional (Sin compilar ni mods):
 echo Si juegas en un servidor con RCON (server.properties: enable-rcon=true),
-echo ¡Chaos-Live funciona directamente sin necesidad de instalar ningun mod!
+echo Chaos-Live funciona directamente sin necesidad de instalar ningun mod!
 echo =========================================================================
 echo.
 pause

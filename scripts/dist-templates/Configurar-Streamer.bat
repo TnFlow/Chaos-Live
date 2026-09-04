@@ -14,7 +14,7 @@ set "ROOT_DIR=%~dp0"
 cd /d "%ROOT_DIR%"
 
 set /p TIKTOK_USER="Ingresa tu usuario de TikTok LIVE (sin @, deja vacio si no usaras TikTok): "
-set /p MOCK_CHOICE="¿Deseas activar modo de prueba/simulacion sin estar en vivo? (S/N) [S]: "
+set /p MOCK_CHOICE="Deseas activar modo de prueba/simulacion sin estar en vivo? (S/N) [S]: "
 
 if /i "%MOCK_CHOICE%"=="N" goto set_mock_false
 set "USE_MOCK=true"
@@ -24,7 +24,7 @@ goto ask_rcon
 set "USE_MOCK=false"
 
 :ask_rcon
-set /p RCON_PASS="Contraseña RCON de Minecraft (opcional, presiona Enter para omitir): "
+set /p RCON_PASS="Contrasena RCON de Minecraft (opcional, presiona Enter para omitir): "
 if "%RCON_PASS%"=="" set "RCON_PASS=minecraft"
 
 echo.
