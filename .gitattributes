@@ -15,3 +15,11 @@
 *.gif binary
 *.ico binary
 *.jar binary
+
+# Lanzadores de Windows: deben llegar al disco con CRLF.
+# cmd.exe puede fallar al saltar a etiquetas (goto) en ficheros con finales de
+# linea LF, y estos .bat son la unica forma que tiene el streamer de arrancar.
+# Con eol=crlf el repo guarda LF y la copia de trabajo recibe CRLF siempre.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
