@@ -1,6 +1,6 @@
 {
   "name": "@chaos-live/adapter-twitch",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "private": true,
   "type": "module",
   "description": "Twitch EventSub WebSocket platform adapter for Chaos-Live",
@@ -12,8 +12,8 @@
     "test": "node --experimental-vm-modules ../../../node_modules/jest/bin/jest.js"
   },
   "dependencies": {
-    "@chaos-live/core": "^0.1.0",
-    "@chaos-live/shared-protocol": "^0.1.0",
+    "@chaos-live/core": "*",
+    "@chaos-live/shared-protocol": "*",
     "ws": "^8.18.0"
   },
   "devDependencies": {

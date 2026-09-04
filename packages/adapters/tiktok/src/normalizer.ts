@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { getGiftCoins } from '@chaos-live/shared-protocol';
 import type {
   ChaosEvent,
   StreamUser,
@@ -17,12 +18,37 @@ function extractUser(data: Record<string, unknown>): StreamUser {
   return { id, displayName };
 }
 
+/**
+ * Decide si un evento `gift` debe emitirse al motor.
+ *
+ * TikTok emite el evento varias veces mientras dura una racha: con
+ * `repeatEnd: false` en cada pulsación y una última vez con `repeatEnd: true` y
+ * el `repeatCount` definitivo. Esto solo ocurre con los regalos que admiten
+ * racha (`giftType === 1`), que son los baratos y más frecuentes.
+ *
+ * Si no se filtran las emisiones intermedias, una racha de 10 rosas dispara ~10
+ * acciones en el juego y suma de más en metas y clasificación.
+ *
+ * Los regalos que no admiten racha (`giftType !== 1`) llegan una sola vez y se
+ * emiten siempre.
+ */
+export function shouldEmitGift(data: Record<string, unknown>): boolean {
+  const giftType = Number(data['giftType'] ?? 0);
+  if (giftType !== 1) {
+    return true;
+  }
+  return data['repeatEnd'] === true || data['repeatEnd'] === 1;
+}
+
 export function normalizeGift(data: Record<string, unknown>): ChaosEvent<'gift'> {
   const user = extractUser(data);
   const giftName = String(data['giftName'] ?? 'Unknown Gift');
   const giftId = Number(data['giftId'] ?? 0);
   const repeatCount = Number(data['repeatCount'] ?? 1);
-  const diamondCount = Number(data['diamondCount'] ?? 1);
+  // Si TikTok no manda `diamondCount`, deducirlo del catálogo antes de caer al
+  // valor 1, que infravaloraría los regalos caros.
+  const rawDiamondCount = Number(data['diamondCount'] ?? 0);
+  const diamondCount = rawDiamondCount > 0 ? rawDiamondCount : (getGiftCoins(giftName) ?? 1);
 
   // Economic value is diamond count * streak count
   const value = Math.max(1, diamondCount * Math.max(1, repeatCount));

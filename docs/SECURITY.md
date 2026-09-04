@@ -88,12 +88,15 @@ In Phase 6, Chaos-Live introduced the **Fabric Mod Outbound Architecture**:
 - **Anti-Starvation Aging:** Lower-priority events (e.g. likes) accumulate priority over time so high-roller gifts cannot permanently starve chat interactions.
 - **Bounded In-Memory Cache:** Recent event maps are hard-capped at 500 items with LRU eviction to prevent memory leaks.
 
-### 2.7 Multi-Tenant SaaS Isolation (Phase 10)
-- In multi-streamer deployments, `TenantManager` isolates queues, rules, and goal state per `tenantId`.
-- SQLite/PostgreSQL Prisma schema enforces tenant scoping and composite indexes (`[tenantId, eventType, createdAt]`).
-- Streamer credentials stored in `TokenVault` are isolated per tenant.
+### 2.7 Network Exposure
+- The HTTP/WebSocket server binds to `127.0.0.1` by default (`HOST` environment variable).
+- **The REST management API has no authentication.** This is acceptable only because the deployment model is a single machine running Chaos-Live, Minecraft and OBS together (see [ADR-0003](adr/0003-alcance-single-tenant.md)). Setting `HOST=0.0.0.0` exposes rule editing and action injection to the whole local network, and the server logs a warning when it does.
+- Commands are validated with `isCommandSafe` **at write time** (`POST`/`PUT /api/rules` and `/api/goals`) as well as at dispatch time, so a rejected command fails loudly at the panel instead of silently never firing.
 
-### 2.8 Container & Runtime Security
+### 2.8 Multi-Tenant SaaS Isolation — NOT ACTIVE
+> `TenantManager`, `PrismaTokenVault` and the `tenantId` columns in the Prisma schema exist and are tested, but **nothing instantiates them at runtime**. The application runs as a single implicit tenant. Do not rely on per-tenant isolation as a security control until this is wired up — see [ADR-0003](adr/0003-alcance-single-tenant.md).
+
+### 2.9 Container & Runtime Security
 - **Non-Root Execution:** The multi-stage production Dockerfile switches to `USER node:node` (UID/GID 1000).
 - **Secrets Isolation:** No passwords, usernames, or tokens are committed to source control. Everything is injected via environment variables (`.env`).
 - **Error Trapping:** Process-level error traps for `uncaughtException` and `unhandledRejection` prevent ungraceful crashes and log structured diagnostics.

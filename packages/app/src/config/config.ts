@@ -22,6 +22,7 @@ export interface AppConfig {
   mockIntervalMs: number;
   logLevel: string;
   wsPort: number;
+  wsHost: string;
   rconHost: string;
   rconPort: number;
   rconPassword?: string;
@@ -91,6 +92,9 @@ export function loadConfig(): AppConfig {
   const mockIntervalMs = Number(process.env.MOCK_INTERVAL_MS || 2500);
   const logLevel = process.env.LOG_LEVEL || 'info';
   const wsPort = Number(process.env.WS_PORT || 8080);
+  // Por defecto solo se escucha en local: la API de gestión no tiene
+  // autenticación y todo (Chaos-Live, Minecraft y OBS) corre en el mismo PC.
+  const wsHost = process.env.HOST?.trim() || '127.0.0.1';
 
   const rconHost = process.env.RCON_HOST || '127.0.0.1';
   const rconPort = Number(process.env.RCON_PORT || 25575);
@@ -105,6 +109,7 @@ export function loadConfig(): AppConfig {
     mockIntervalMs,
     logLevel,
     wsPort,
+    wsHost,
     rconHost,
     rconPort,
     rconPassword,

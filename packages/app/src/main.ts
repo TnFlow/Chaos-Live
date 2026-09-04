@@ -4,16 +4,24 @@ import {
   InMemoryPriorityQueue,
   RuleEvaluator,
   GoalEngine,
+  SessionLeaderboard,
   recordProcessedEvent,
   closePrismaClient,
 } from '@chaos-live/core';
 import { TikTokAdapter } from '@chaos-live/adapter-tiktok';
 import { MockAdapter } from '@chaos-live/adapter-mock';
 import { RconAdapter } from '@chaos-live/adapter-minecraft-rcon';
-import type { GameAction, ActionResult, ChaosEvent } from '@chaos-live/shared-protocol';
+import type {
+  GameAction,
+  ActionResult,
+  ChaosEvent,
+  OverlaySettings,
+} from '@chaos-live/shared-protocol';
 import { loadConfig } from './config/config.js';
+import { loadOverlaySettings, saveOverlaySettings } from './config/overlay-settings.js';
 import { WebSocketHub } from './server.js';
 import { handleApiRequest } from './api/router.js';
+import type { OverlaySettingsStore } from './api/router.js';
 import { HybridGameAdapter } from './adapters/hybrid-game-adapter.js';
 import { logger } from './logger.js';
 
@@ -108,6 +116,26 @@ async function bootstrap(): Promise<void> {
   // Cache recent events in-memory to pair with action results for database persistence
   const recentEvents = new Map<string, ChaosEvent>();
 
+  // Clasificación de la sesión. Vive aquí y no en el overlay para que recargar
+  // la fuente de OBS no borre a los mayores contribuyentes.
+  const sessionLeaderboard = new SessionLeaderboard();
+
+  // Ajustes del overlay: se cargan de disco al arrancar y se reescriben en cada
+  // cambio, para que lo que el streamer configure sobreviva a un reinicio.
+  let overlaySettingsState: OverlaySettings = loadOverlaySettings();
+  const overlaySettings: OverlaySettingsStore = {
+    get: () => overlaySettingsState,
+    update: (patch) => {
+      overlaySettingsState = { ...overlaySettingsState, ...patch };
+      try {
+        saveOverlaySettings(overlaySettingsState);
+      } catch {
+        // Ya se registró el error; no romper el directo por no poder escribir en disco.
+      }
+      return overlaySettingsState;
+    },
+  };
+
   // Declare hybrid game adapter and engine references
   let hybridAdapter: HybridGameAdapter;
   let engine: EventEngine;
@@ -115,6 +143,7 @@ async function bootstrap(): Promise<void> {
   // Initialize WebSocket Hub for OBS Overlay, Fabric Mod, and REST API
   const wsHub = new WebSocketHub({
     port: config.wsPort,
+    host: config.wsHost,
     onHttpRequest: (req, res) => {
       return handleApiRequest(req, res, {
         engine,
@@ -122,6 +151,7 @@ async function bootstrap(): Promise<void> {
         goalEngine,
         wsHub,
         queue,
+        overlaySettings,
         onInjectEvent: (event) => {
           void engine.handleEvent(event);
         },
@@ -144,22 +174,15 @@ async function bootstrap(): Promise<void> {
         socket.send(
           JSON.stringify({
             type: 'INITIAL_OVERLAY_SETTINGS',
-            payload: {
-              layout: 'landscape',
-              theme: 'cyberpunk',
-              scale: 1.0,
-              masterVolume: 0.8,
-              soundEnabled: true,
-              goalPosition: 'top',
-              feedPosition: 'left',
-              leaderboardPosition: 'right',
-              rewardsMode: 'both',
-              marqueeSpeedSeconds: 28,
-              glassIntensity: 0.75,
-              glowIntensity: 0.8,
-              fontFamily: 'Outfit',
-              bannerDurationSeconds: 4.8,
-            },
+            payload: overlaySettings.get(),
+          }),
+        );
+        // Reenviar la clasificación acumulada: un overlay que se reconecta a
+        // mitad del directo debe recuperar a los mayores contribuyentes.
+        socket.send(
+          JSON.stringify({
+            type: 'INITIAL_LEADERBOARD',
+            payload: sessionLeaderboard.getTop(),
           }),
         );
       }
@@ -216,49 +239,44 @@ async function bootstrap(): Promise<void> {
     });
   }
 
-  platformAdapter.onEvent((event) => {
-    recentEvents.set(event.id, event);
-    // Broadcast raw stream event to overlay
-    wsHub.broadcastEvent(event);
-
-    // Evaluate community goals
-    void (async () => {
-      const updates = await goalEngine.processEvent(event);
-      for (const update of updates) {
-        wsHub.broadcastToOverlay('GOAL_PROGRESS', update);
-        if (update.triggeredAction) {
-          logger.info(
-            { goalName: update.name, command: update.triggeredAction.command },
-            `🎉 [GOAL COMPLETED] Triggering reward: "${update.triggeredAction.command}"`,
-          );
-          wsHub.broadcastToOverlay('GOAL_COMPLETED', update);
-          // Enqueue with elevated priority so the community reward executes promptly
-          queue.enqueue({
-            action: update.triggeredAction,
-            score: 200,
-            enqueuedAt: Date.now(),
-          });
-        }
-      }
-    })();
-
-    // Keep cache bounded
-    if (recentEvents.size > 500) {
-      const oldestKey = recentEvents.keys().next().value;
-      if (oldestKey) recentEvents.delete(oldestKey);
-    }
-  });
-
   engine = new EventEngine({
     ruleEvaluator,
     queue,
+    goalEngine,
     gameAdapter,
     platformAdapters: [platformAdapter],
+    // Único consumidor del stream de eventos: el motor emite cada transición y
+    // aquí solo se traduce a logs y a mensajes para el overlay.
     onPipelineState: (entry) => {
-      const { correlationId, state, timestamp, details } = entry;
+      const { correlationId, state, details, action, event } = entry;
       switch (state) {
         case 'EVENT_RECEIVED':
           logger.info({ correlationId, ...details }, `📥 [${state}] New event received`);
+          if (event) {
+            recentEvents.set(event.id, event);
+            wsHub.broadcastEvent(event);
+
+            if (sessionLeaderboard.record(event)) {
+              wsHub.broadcastToOverlay('LEADERBOARD_UPDATED', sessionLeaderboard.getTop());
+            }
+
+            // Mantener la caché acotada
+            if (recentEvents.size > 500) {
+              const oldestKey = recentEvents.keys().next().value;
+              if (oldestKey) recentEvents.delete(oldestKey);
+            }
+          }
+          break;
+        case 'GOAL_PROGRESS':
+          wsHub.broadcastToOverlay('GOAL_PROGRESS', details);
+          break;
+        case 'GOAL_COMPLETED':
+          logger.info(
+            { correlationId, goalName: details?.['name'], command: action?.command },
+            `🎉 [${state}] Meta completada: "${details?.['name']}"`,
+          );
+          wsHub.broadcastToOverlay('GOAL_PROGRESS', details);
+          wsHub.broadcastToOverlay('GOAL_COMPLETED', details);
           break;
         case 'EVENT_VALIDATED':
           logger.debug({ correlationId }, `✔️  [${state}] Payload validated`);
@@ -291,11 +309,11 @@ async function bootstrap(): Promise<void> {
           );
           wsHub.broadcastToOverlay('ACTION_DISPATCHED', {
             correlationId,
-            actionType: details?.['actionType'],
-            command: details?.['command'],
-            icon: details?.['icon'],
-            imageUrl: details?.['imageUrl'],
-            viewerFeedback: details?.['viewerFeedback'],
+            actionType: action?.actionType,
+            command: action?.command,
+            icon: action?.icon,
+            imageUrl: action?.imageUrl,
+            viewerFeedback: action?.viewerFeedback,
           });
           break;
         case 'EVENT_COMPLETED': {
@@ -305,7 +323,7 @@ async function bootstrap(): Promise<void> {
           );
           const event = recentEvents.get(correlationId);
           if (event) {
-            void recordProcessedEvent(event, undefined, {
+            void recordProcessedEvent(event, action, {
               actionId: correlationId,
               success: true,
               durationMs: Number(details?.['durationMs'] ?? 0),
@@ -318,7 +336,7 @@ async function bootstrap(): Promise<void> {
           logger.error({ correlationId, ...details }, `❌ [${state}] Event processing failed`);
           const event = recentEvents.get(correlationId);
           if (event) {
-            void recordProcessedEvent(event, undefined, {
+            void recordProcessedEvent(event, action, {
               actionId: correlationId,
               success: false,
               durationMs: Number(details?.['durationMs'] ?? 0),

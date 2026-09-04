@@ -1,6 +1,6 @@
 {
   "name": "chaos-live",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "private": true,
   "description": "Modular real-time event middleware connecting TikTok LIVE to Minecraft Java Edition",
   "type": "module",
@@ -20,11 +20,12 @@
   "scripts": {
     "build": "npm run build --workspaces --if-present",
     "test": "node --experimental-vm-modules ./node_modules/jest/bin/jest.js",
-    "lint": "eslint 'packages/**/*.ts'",
-    "lint:fix": "eslint 'packages/**/*.ts' --fix",
-    "format": "prettier --write 'packages/**/*.{ts,json,md}'",
-    "format:check": "prettier --check 'packages/**/*.{ts,json,md}'",
+    "lint": "eslint \"packages/**/*.ts\"",
+    "lint:fix": "eslint \"packages/**/*.ts\" --fix",
+    "format": "prettier --write \"packages/**/*.{ts,json,md}\"",
+    "format:check": "prettier --check \"packages/**/*.{ts,json,md}\"",
     "clean": "npm run clean --workspaces --if-present",
+    "typecheck": "tsc -p packages/overlay/tsconfig.json",
     "dev": "npm run dev --workspace=packages/app",
     "package:windows": "powershell -ExecutionPolicy Bypass -File ./scripts/package-windows.ps1"
   },

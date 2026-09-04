@@ -17,8 +17,8 @@
 
 ## Beta (Phases 6–7) ✅
 - [x] Custom Fabric mod (1.20.1) — Outbound WebSocket client & tick command executor (`9ba19d2`, `470a5b0`, `b9d0568`)
-- [x] Multi-platform support — Twitch EventSub WebSocket adapter (`da911c6`)
-- [x] Concurrent multi-platform event ingestion in EventEngine (`36da346`)
+- [x] Twitch EventSub WebSocket adapter — built and tested, **not wired into the app** (`da911c6`, see [ADR-0003](adr/0003-alcance-single-tenant.md))
+- [x] `EventEngine` accepts multiple platform adapters (`36da346`) — the app currently composes exactly one (TikTok or mock)
 
 ## Production (Phases 8–10) ✅
 - [x] Embedded REST Management API with hot-reloading rules (`0b18b1a`)
@@ -27,5 +27,5 @@
 - [x] Security audit — command whitelisting, injection defenses, chaining prevention (`f377ff5`)
 - [x] Production multi-stage Dockerfile with non-root user and healthcheck (`ce44bb6`)
 - [x] GitHub Actions CI/CD workflows for monorepo and Fabric mod (`bbb7b67`)
-- [x] SaaS foundation — Multi-tenant TenantManager, isolated queues, and OAuth TokenVault (`phase 10`)
+- [x] SaaS foundation — `TenantManager`, isolated queues and OAuth `TokenVault` — built and tested, **not instantiated at runtime** (`phase 10`, see [ADR-0003](adr/0003-alcance-single-tenant.md))
 - [x] Finalized licensing strategy in ADR-0001

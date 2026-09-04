@@ -1,8 +1,13 @@
 import http from 'node:http';
 import { EventEngine, InMemoryPriorityQueue, RuleEvaluator, GoalEngine } from '@chaos-live/core';
 import type { RuleDefinition } from '@chaos-live/core';
+import os from 'node:os';
+import path from 'node:path';
+import { DEFAULT_OVERLAY_SETTINGS } from '@chaos-live/shared-protocol';
+import type { OverlaySettings } from '@chaos-live/shared-protocol';
 import { WebSocketHub } from '../src/server.js';
 import { handleApiRequest } from '../src/api/router.js';
+import type { OverlaySettingsStore } from '../src/api/router.js';
 
 describe('REST Management API', () => {
   const testPort = 9878;
@@ -12,6 +17,12 @@ describe('REST Management API', () => {
   let goalEngine: GoalEngine;
   let queue: InMemoryPriorityQueue;
   let initialRules: RuleDefinition[];
+  let overlaySettings: OverlaySettingsStore;
+
+  // Los tests guardan reglas en disco. Antes escribian en `config/test-rules.json`,
+  // que esta versionado, asi que cada ejecucion dejaba el arbol sucio y hacia
+  // fallar el `git diff --exit-code` de CI. Se usa un fichero temporal del sistema.
+  const testRulesPath = path.join(os.tmpdir(), 'chaos-live-test-rules.json');
   let currentOnInject: ((e: any) => void) | undefined = undefined;
 
   beforeEach(async () => {
@@ -37,6 +48,16 @@ describe('REST Management API', () => {
       queue,
     });
 
+    // Store en memoria: los tests no deben tocar el fichero de ajustes real.
+    let settingsState: OverlaySettings = { ...DEFAULT_OVERLAY_SETTINGS };
+    overlaySettings = {
+      get: () => settingsState,
+      update: (patch) => {
+        settingsState = { ...settingsState, ...patch };
+        return settingsState;
+      },
+    };
+
     hub = new WebSocketHub({
       port: testPort,
       onHttpRequest: (req, res) => {
@@ -46,7 +67,8 @@ describe('REST Management API', () => {
           goalEngine,
           wsHub: hub,
           queue,
-          rulesFilePath: 'config/test-rules.json',
+          overlaySettings,
+          rulesFilePath: testRulesPath,
           onInjectEvent: (e) => {
             currentOnInject?.(e);
           },
@@ -189,6 +211,206 @@ describe('REST Management API', () => {
     expect(presets.length).toBeGreaterThanOrEqual(10);
     expect(presets.some((p) => p.name === 'Rose' && p.icon === '🌹')).toBe(true);
     expect(presets.some((p) => p.name === 'Lion' && p.icon === '🦁')).toBe(true);
+  });
+
+  it('GET /api/health responds instead of falling through to the 404 handler', async () => {
+    const res = await fetch(`http://localhost:${testPort}/api/health`);
+    expect(res.status).toBe(200);
+
+    const body = (await res.json()) as { status: string };
+    expect(body.status).toBe('ok');
+  });
+
+  describe('GET /api/diagnostics', () => {
+    it('reports every pre-stream check with an actionable status', async () => {
+      const res = await fetch(`http://localhost:${testPort}/api/diagnostics`);
+      expect(res.status).toBe(200);
+
+      const body = (await res.json()) as {
+        status: string;
+        checks: { id: string; status: string; detail: string; hint?: string }[];
+      };
+
+      const ids = body.checks.map((c) => c.id);
+      expect(ids).toEqual(expect.arrayContaining(['game', 'platform', 'overlay', 'rules', 'goals']));
+      // Sin juego ni plataforma conectados el diagnóstico global debe ser de error.
+      expect(body.status).toBe('error');
+      expect(body.checks.find((c) => c.id === 'game')?.hint).toBeTruthy();
+    });
+
+    it('flags rules whose command the engine would reject', async () => {
+      // Una regla inválida solo puede llegar aquí editando rules.json a mano,
+      // que es exactamente el caso que el diagnóstico debe detectar.
+      ruleEvaluator.setRules([
+        {
+          id: 'rule-rota',
+          name: 'Regla rota',
+          enabled: true,
+          priority: 10,
+          cooldownMs: 0,
+          matcher: { eventTypes: ['gift'] },
+          action: { actionType: 'execute_command', command: 'op attacker' },
+        },
+      ]);
+
+      const res = await fetch(`http://localhost:${testPort}/api/diagnostics`);
+      const body = (await res.json()) as { checks: { id: string; status: string; detail: string }[] };
+
+      const rulesCheck = body.checks.find((c) => c.id === 'rules');
+      expect(rulesCheck?.status).toBe('error');
+      expect(rulesCheck?.detail).toContain('Regla rota');
+    });
+
+    it('warns when the engine is paused', async () => {
+      await fetch(`http://localhost:${testPort}/api/queue/pause`, { method: 'POST' });
+
+      const res = await fetch(`http://localhost:${testPort}/api/diagnostics`);
+      const body = (await res.json()) as { checks: { id: string; status: string }[] };
+
+      expect(body.checks.find((c) => c.id === 'paused')?.status).toBe('warn');
+    });
+  });
+
+  it('GET /api/status reports connection state per platform adapter', async () => {
+    const res = await fetch(`http://localhost:${testPort}/api/status`);
+    const data = (await res.json()) as { adapters: { platforms: unknown[] } };
+
+    // Antes era una lista de nombres; ahora cada entrada lleva su estado.
+    for (const platform of data.adapters.platforms) {
+      expect(platform).toHaveProperty('name');
+      expect(platform).toHaveProperty('connected');
+    }
+  });
+
+  describe('write-time rule validation', () => {
+    it('rejects a rule whose command is not whitelisted', async () => {
+      const res = await fetch(`http://localhost:${testPort}/api/rules`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: 'Regla peligrosa',
+          matcher: { eventTypes: ['gift'] },
+          action: { actionType: 'execute_command', command: 'op attacker' },
+        }),
+      });
+
+      expect(res.status).toBe(400);
+      const body = (await res.json()) as { error: string; details: string[] };
+      expect(body.details.join(' ')).toContain('bloqueado por seguridad');
+
+      // La regla no debe haberse guardado.
+      expect(ruleEvaluator.getRules().some((r) => r.name === 'Regla peligrosa')).toBe(false);
+    });
+
+    it('rejects command chaining attempts', async () => {
+      const res = await fetch(`http://localhost:${testPort}/api/rules`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: 'Encadenada',
+          matcher: { eventTypes: ['gift'] },
+          action: { actionType: 'execute_command', command: 'say hola; op attacker' },
+        }),
+      });
+
+      expect(res.status).toBe(400);
+      expect(ruleEvaluator.getRules().some((r) => r.name === 'Encadenada')).toBe(false);
+    });
+
+    it('rejects a rule with no matcher conditions', async () => {
+      const res = await fetch(`http://localhost:${testPort}/api/rules`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: 'Sin condiciones',
+          matcher: {},
+          action: { actionType: 'execute_command', command: 'say hola' },
+        }),
+      });
+
+      expect(res.status).toBe(400);
+      const body = (await res.json()) as { details: string[] };
+      expect(body.details.join(' ')).toContain('matcher');
+    });
+
+    it('rejects an update that would make an existing rule invalid', async () => {
+      const res = await fetch(`http://localhost:${testPort}/api/rules/rule-test-1`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: { actionType: 'execute_command', command: 'stop' } }),
+      });
+
+      expect(res.status).toBe(400);
+      // La regla original queda intacta.
+      const rule = ruleEvaluator.getRules().find((r) => r.id === 'rule-test-1');
+      expect(rule?.action.command).toBe('say Gift!');
+    });
+
+    it('still accepts a valid rule', async () => {
+      const res = await fetch(`http://localhost:${testPort}/api/rules`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: 'Regla válida',
+          matcher: { eventTypes: ['gift'], metadataMatch: { giftName: 'Rose' } },
+          action: {
+            actionType: 'execute_command',
+            command: 'execute at @p run summon chicken ~ ~1 ~',
+          },
+        }),
+      });
+
+      expect(res.status).toBe(201);
+      expect(ruleEvaluator.getRules().some((r) => r.name === 'Regla válida')).toBe(true);
+    });
+
+    it('rejects a community goal with a blocked command', async () => {
+      const res = await fetch(`http://localhost:${testPort}/api/goals`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: 'Meta peligrosa',
+          eventType: 'gift',
+          targetValue: 10,
+          actionCommand: 'ban @a',
+        }),
+      });
+
+      expect(res.status).toBe(400);
+      expect(goalEngine.getGoals().some((g) => g.name === 'Meta peligrosa')).toBe(false);
+    });
+  });
+
+  it('GET /api/overlay-settings returns the settings held by the store', async () => {
+    const res = await fetch(`http://localhost:${testPort}/api/overlay-settings`);
+    expect(res.status).toBe(200);
+
+    const settings = (await res.json()) as OverlaySettings;
+    expect(settings.theme).toBe(DEFAULT_OVERLAY_SETTINGS.theme);
+    expect(settings.bannerDurationSeconds).toBe(DEFAULT_OVERLAY_SETTINGS.bannerDurationSeconds);
+  });
+
+  it('PUT /api/overlay-settings merges into the store instead of module state', async () => {
+    const res = await fetch(`http://localhost:${testPort}/api/overlay-settings`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ theme: 'obsidian', scale: 1.25 }),
+    });
+    expect(res.status).toBe(200);
+
+    const body = (await res.json()) as { success: boolean; settings: OverlaySettings };
+    expect(body.success).toBe(true);
+    expect(body.settings.theme).toBe('obsidian');
+    expect(body.settings.scale).toBe(1.25);
+    // Los campos no enviados conservan su valor previo.
+    expect(body.settings.layout).toBe(DEFAULT_OVERLAY_SETTINGS.layout);
+
+    // El store es la fuente de verdad: una lectura posterior ve el cambio.
+    expect(overlaySettings.get().theme).toBe('obsidian');
+    const readBack = (await (
+      await fetch(`http://localhost:${testPort}/api/overlay-settings`)
+    ).json()) as OverlaySettings;
+    expect(readBack.theme).toBe('obsidian');
   });
 
   it('POST /api/rules/:id/test synthesizes and injects a matching event for the rule', async () => {

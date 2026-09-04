@@ -23,3 +23,20 @@ export type {
   GameAction,
   ActionResult,
 } from './game-action.js';
+
+export {
+  DEFAULT_OVERLAY_SETTINGS,
+  type OverlaySettings,
+  type OverlayLayout,
+  type OverlayTheme,
+  type RewardsDisplayMode,
+  type WidgetPosition,
+} from './overlay-settings.js';
+
+export {
+  TIKTOK_GIFTS,
+  getGiftByName,
+  getGiftCoins,
+  type GiftCategory,
+  type TikTokGiftPreset,
+} from './tiktok-gifts.js';

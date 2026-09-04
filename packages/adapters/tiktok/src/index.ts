@@ -10,6 +10,7 @@ export {
 
 export {
   normalizeGift,
+  shouldEmitGift,
   normalizeLike,
   normalizeComment,
   normalizeFollow,

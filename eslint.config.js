@@ -40,12 +40,21 @@ export default tseslint.config(
   },
   {
     ignores: [
-      "node_modules/",
-      "dist/",
-      "coverage/",
+      "**/node_modules/",
+      // Sin el prefijo "**/" solo se ignoraba el dist de la raiz, no el de cada
+      // paquete, asi que tras un build ESLint analizaba los .d.ts generados.
+      "**/dist/",
+      "**/build/",
+      "**/coverage/",
       "mc-mod/",
       "*.config.*",
+      "**/*.config.ts",
       "jest.config.*",
+      // Los tests y el punto de entrada del overlay (que importa .svelte) no
+      // los cubre ningun tsconfig, asi que el analisis con tipos no puede
+      // procesarlos.
+      "**/__tests__/",
+      "packages/overlay/src/main.ts",
     ],
   },
 );

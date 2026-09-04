@@ -6,6 +6,7 @@ import type { PipelineLogEntry } from '../src/domain/pipeline-state.js';
 import { RuleEvaluator } from '../src/engine/rule-evaluator.js';
 import { InMemoryPriorityQueue } from '../src/queue/in-memory-priority-queue.js';
 import { EventEngine } from '../src/engine/event-engine.js';
+import { GoalEngine } from '../src/goals/goal-engine.js';
 
 class MockPlatform implements PlatformAdapter {
   readonly name = 'MockPlatform';
@@ -240,6 +241,169 @@ describe('EventEngine Orchestrator', () => {
     expect(failureLog?.details?.error).toBe('Simulated game failure');
 
     await engine.stop();
+  });
+
+  describe('unified goal + rule pipeline', () => {
+    function roseGift(id: string): ChaosEvent<'gift'> {
+      return {
+        id,
+        platform: 'tiktok',
+        type: 'gift',
+        user: { id: 'u-goal', displayName: 'GoalSupporter' },
+        value: 1,
+        metadata: { giftName: 'Rose', giftId: 1, repeatCount: 1, diamondCount: 1 },
+        raw: {},
+        timestamp: Date.now(),
+      };
+    }
+
+    it('advances goals and evaluates rules for the same event, in that order', async () => {
+      const platform = new MockPlatform();
+      const game = new MockGame();
+      const queue = new InMemoryPriorityQueue();
+      const goalEngine = new GoalEngine([
+        {
+          id: 'goal-two-roses',
+          name: '2 Roses',
+          eventType: 'gift',
+          giftName: 'Rose',
+          targetValue: 2,
+          actionCommand: 'summon warden ~ ~ ~',
+        },
+      ]);
+
+      const logs: PipelineLogEntry[] = [];
+      const engine = new EventEngine({
+        queue,
+        ruleEvaluator: new RuleEvaluator(rules),
+        goalEngine,
+        gameAdapter: game,
+        platformAdapters: [platform],
+        onPipelineState: (entry) => logs.push(entry),
+      });
+
+      await engine.start();
+
+      platform.simulateEvent(roseGift('evt-goal-1'));
+      await new Promise((r) => setTimeout(r, 50));
+
+      // Primer regalo: la meta avanza pero no se completa; la regla sí dispara.
+      const firstStates = logs.map((l) => l.state);
+      expect(firstStates).toContain('GOAL_PROGRESS');
+      expect(firstStates).not.toContain('GOAL_COMPLETED');
+      expect(goalEngine.getGoal('goal-two-roses')?.currentValue).toBe(1);
+      expect(game.executed.map((a) => a.command)).toEqual(['summon chicken ~ ~ ~']);
+
+      platform.simulateEvent(roseGift('evt-goal-2'));
+      await new Promise((r) => setTimeout(r, 50));
+
+      // Segundo regalo: la meta se completa y su recompensa se ejecuta,
+      // además de la acción de la regla.
+      expect(logs.map((l) => l.state)).toContain('GOAL_COMPLETED');
+      const commands = game.executed.map((a) => a.command);
+      expect(commands).toContain('summon warden ~ ~ ~');
+      expect(commands.filter((c) => c === 'summon chicken ~ ~ ~')).toHaveLength(2);
+
+      // La meta va antes que la regla dentro del mismo evento.
+      const secondEventLogs = logs.filter((l) => l.correlationId === 'evt-goal-2');
+      const goalIndex = secondEventLogs.findIndex((l) => l.state === 'GOAL_COMPLETED');
+      const ruleIndex = secondEventLogs.findIndex((l) => l.state === 'RULE_MATCHED');
+      expect(goalIndex).toBeGreaterThanOrEqual(0);
+      expect(ruleIndex).toBeGreaterThan(goalIndex);
+
+      await engine.stop();
+    });
+
+    it('dispatches the goal reward with its elevated priority', async () => {
+      const platform = new MockPlatform();
+      const game = new MockGame();
+      const queue = new InMemoryPriorityQueue();
+      const goalEngine = new GoalEngine([
+        {
+          id: 'goal-instant',
+          name: 'Meta inmediata',
+          eventType: 'gift',
+          targetValue: 1,
+          actionCommand: 'give @a minecraft:diamond 5',
+        },
+      ]);
+
+      const engine = new EventEngine({
+        queue,
+        // Sin reglas: solo debe ejecutarse la recompensa de la meta.
+        ruleEvaluator: new RuleEvaluator([]),
+        goalEngine,
+        gameAdapter: game,
+        platformAdapters: [platform],
+      });
+
+      await engine.start();
+      platform.simulateEvent(roseGift('evt-instant'));
+      await new Promise((r) => setTimeout(r, 50));
+
+      expect(game.executed).toHaveLength(1);
+      expect(game.executed[0]?.command).toBe('give @a minecraft:diamond 5');
+      expect(game.executed[0]?.priority).toBe(200);
+
+      await engine.stop();
+    });
+
+    it('keeps processing rules when the goal engine throws', async () => {
+      const platform = new MockPlatform();
+      const game = new MockGame();
+      const goalEngine = new GoalEngine([]);
+      goalEngine.processEvent = async () => {
+        throw new Error('goal storage unavailable');
+      };
+
+      const logs: PipelineLogEntry[] = [];
+      const engine = new EventEngine({
+        queue: new InMemoryPriorityQueue(),
+        ruleEvaluator: new RuleEvaluator(rules),
+        goalEngine,
+        gameAdapter: game,
+        platformAdapters: [platform],
+        onPipelineState: (entry) => logs.push(entry),
+      });
+
+      await engine.start();
+      platform.simulateEvent(roseGift('evt-goal-error'));
+      await new Promise((r) => setTimeout(r, 50));
+
+      // El fallo de la meta se registra, pero la regla se ejecuta igualmente.
+      expect(logs.some((l) => l.state === 'EVENT_FAILED' && l.details?.['stage'] === 'GOALS')).toBe(
+        true,
+      );
+      expect(game.executed).toHaveLength(1);
+
+      await engine.stop();
+    });
+
+    it('carries the dispatched action on the pipeline entry for the audit trail', async () => {
+      const platform = new MockPlatform();
+      const game = new MockGame();
+
+      const logs: PipelineLogEntry[] = [];
+      const engine = new EventEngine({
+        queue: new InMemoryPriorityQueue(),
+        ruleEvaluator: new RuleEvaluator(rules),
+        gameAdapter: game,
+        platformAdapters: [platform],
+        onPipelineState: (entry) => logs.push(entry),
+      });
+
+      await engine.start();
+      platform.simulateEvent(roseGift('evt-audit'));
+      await new Promise((r) => setTimeout(r, 50));
+
+      const completed = logs.find((l) => l.state === 'EVENT_COMPLETED');
+      expect(completed?.action?.command).toBe('summon chicken ~ ~ ~');
+
+      const received = logs.find((l) => l.state === 'EVENT_RECEIVED');
+      expect(received?.event?.id).toBe('evt-audit');
+
+      await engine.stop();
+    });
   });
 
   it('processes events concurrently from multiple platform adapters with unified queueing', async () => {

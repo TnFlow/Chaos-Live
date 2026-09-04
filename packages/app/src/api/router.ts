@@ -1,12 +1,31 @@
 import type http from 'node:http';
 import { randomUUID } from 'node:crypto';
-import type { EventEngine, RuleEvaluator, GoalEngine, QueuePort } from '@chaos-live/core';
+import type {
+  EventEngine,
+  RuleEvaluator,
+  GoalEngine,
+  QueuePort,
+  PlatformAdapter,
+} from '@chaos-live/core';
 import { getPrismaClient } from '@chaos-live/core';
 import type { RuleDefinition } from '@chaos-live/core';
-import type { ChaosEvent } from '@chaos-live/shared-protocol';
+import { isCommandSafe, DEFAULT_ALLOWED_COMMANDS } from '@chaos-live/adapter-minecraft-rcon';
+import { TIKTOK_GIFTS } from '@chaos-live/shared-protocol';
+import type { ChaosEvent, OverlaySettings } from '@chaos-live/shared-protocol';
 import type { WebSocketHub } from '../server.js';
 import { saveRules } from '../config/config.js';
 import { logger } from '../logger.js';
+
+/**
+ * Almacén de los ajustes del overlay. Lo posee la raíz de composición
+ * (`main.ts`), que es quien los persiste en disco; el router solo lee y
+ * escribe a través de él. Antes eran una variable de módulo aquí, y todo lo
+ * que el streamer configuraba se perdía en cada reinicio.
+ */
+export interface OverlaySettingsStore {
+  get(): OverlaySettings;
+  update(patch: Partial<OverlaySettings>): OverlaySettings;
+}
 
 export interface ApiContext {
   engine: EventEngine;
@@ -14,26 +33,11 @@ export interface ApiContext {
   goalEngine: GoalEngine;
   wsHub: WebSocketHub;
   queue: QueuePort;
+  overlaySettings: OverlaySettingsStore;
   rulesFilePath?: string;
   onInjectEvent?: (event: ChaosEvent) => void;
 }
 
-let currentOverlaySettings: Record<string, any> = {
-  layout: 'landscape',
-  theme: 'cyberpunk',
-  scale: 1.0,
-  masterVolume: 0.8,
-  soundEnabled: true,
-  goalPosition: 'top',
-  feedPosition: 'left',
-  leaderboardPosition: 'right',
-  rewardsMode: 'both',
-  marqueeSpeedSeconds: 28,
-  glassIntensity: 0.75,
-  glowIntensity: 0.8,
-  fontFamily: 'Outfit',
-  bannerDurationSeconds: 4.8,
-};
 
 function sendJson(res: http.ServerResponse, statusCode: number, data: unknown): void {
   res.writeHead(statusCode, {
@@ -54,6 +58,304 @@ function readBody(req: http.IncomingMessage): Promise<string> {
     req.on('end', () => resolve(body));
     req.on('error', reject);
   });
+}
+
+/** Error de petición del cliente: se traduce a 400, no a 500. */
+class BadRequestError extends Error {}
+
+/**
+ * Lee y parsea el cuerpo JSON de la petición.
+ *
+ * Un cuerpo malformado es culpa de quien llama, así que debe salir como 400 con
+ * un mensaje claro; antes reventaba en el `catch` general y se devolvía un 500
+ * genérico que hacía parecer que el fallo era del servidor.
+ */
+// El cuerpo de una peticion HTTP es dato sin verificar: cada handler valida los
+// campos que le interesan. Tiparlo como `unknown` obligaria a coaccionar cada
+// campo en todos los handlers, asi que se mantiene el `any` deliberado que ya
+// usaba el resto del fichero.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function readJsonBody(req: http.IncomingMessage): Promise<Record<string, any>> {
+  const raw = await readBody(req);
+  if (!raw.trim()) {
+    return {};
+  }
+  try {
+    const parsed = JSON.parse(raw);
+    if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      throw new BadRequestError('El cuerpo de la petición debe ser un objeto JSON.');
+    }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return parsed as Record<string, any>;
+  } catch (err) {
+    if (err instanceof BadRequestError) throw err;
+    throw new BadRequestError(
+      `El cuerpo de la petición no es JSON válido: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
+}
+
+/**
+ * Valida un comando de Minecraft antes de persistirlo.
+ *
+ * Hasta ahora el comando solo se comprobaba en el momento de ejecutarlo, dentro
+ * del `HybridGameAdapter`. Eso permitía guardar una regla que se veía activa en
+ * el panel y que en directo no hacía nada, sin explicación visible. Validar al
+ * escribir convierte ese fallo silencioso en un error inmediato y comprensible.
+ *
+ * Devuelve el motivo del rechazo, o `null` si el comando es válido.
+ */
+function validateCommand(command: unknown, fieldName: string): string | null {
+  if (typeof command !== 'string' || command.trim() === '') {
+    return `El campo "${fieldName}" es obligatorio y debe ser un comando de Minecraft.`;
+  }
+
+  if (!isCommandSafe(command)) {
+    return (
+      `El comando "${command}" está bloqueado por seguridad. ` +
+      `Solo se permiten estos comandos: ${[...DEFAULT_ALLOWED_COMMANDS].sort().join(', ')}. ` +
+      `Tampoco se admiten los caracteres ";", los saltos de línea ni subcomandos peligrosos tras "execute ... run".`
+    );
+  }
+
+  return null;
+}
+
+/**
+ * Comprueba la forma mínima de una regla antes de guardarla.
+ * Devuelve la lista de problemas encontrados (vacía si la regla es válida).
+ */
+function validateRulePayload(parsed: Record<string, unknown>): string[] {
+  const errors: string[] = [];
+
+  const matcher = parsed['matcher'] as Record<string, unknown> | undefined;
+  if (!matcher || typeof matcher !== 'object' || Object.keys(matcher).length === 0) {
+    errors.push(
+      'La regla necesita al menos una condición en "matcher" (tipo de evento, plataforma, valor mínimo o nombre del regalo). ' +
+        'Una regla sin condiciones se dispararía con cualquier evento.',
+    );
+  }
+
+  const action = parsed['action'] as Record<string, unknown> | undefined;
+  if (!action || typeof action !== 'object') {
+    errors.push('La regla necesita un bloque "action" con el comando a ejecutar.');
+  } else {
+    const commandError = validateCommand(action['command'], 'action.command');
+    if (commandError) errors.push(commandError);
+  }
+
+  for (const field of ['priority', 'cooldownMs'] as const) {
+    const value = parsed[field];
+    if (value !== undefined && Number.isNaN(Number(value))) {
+      errors.push(`El campo "${field}" debe ser un número.`);
+    }
+  }
+
+  return errors;
+}
+
+/**
+ * Resume el estado de un adapter de plataforma para el panel.
+ *
+ * El estado del cortocircuito (`circuitState`) solo lo expone el adapter de
+ * TikTok, así que se consulta de forma opcional en lugar de exigirlo en el
+ * puerto `PlatformAdapter`.
+ */
+function describePlatformAdapter(adapter: PlatformAdapter): Record<string, unknown> {
+  const maybeCircuit = adapter as PlatformAdapter & { getCircuitState?: () => string };
+  return {
+    name: adapter.name,
+    connected: adapter.isConnected(),
+    circuitState: maybeCircuit.getCircuitState?.(),
+  };
+}
+
+/**
+ * Comprobación previa al directo.
+ *
+ * Reúne en un solo sitio todo lo que suele fallar justo antes de empezar a
+ * transmitir, para no tener que descubrirlo en vivo: que el juego esté
+ * conectado, que la plataforma esté enlazada, que ninguna regla o meta guardada
+ * tenga un comando que el motor vaya a rechazar, y que la base de datos sea
+ * escribible.
+ */
+interface DiagnosticCheck {
+  id: string;
+  label: string;
+  status: 'ok' | 'warn' | 'error';
+  detail: string;
+  hint?: string;
+}
+
+async function buildDiagnostics(context: ApiContext): Promise<{
+  status: 'ok' | 'warn' | 'error';
+  checks: DiagnosticCheck[];
+}> {
+  const checks: DiagnosticCheck[] = [];
+  const { wsHub, engine, ruleEvaluator, goalEngine } = context;
+
+  // 1. Destino en el juego
+  const modConnected = wsHub.isModConnected();
+  const gameAdapter = engine.getGameAdapter();
+  if (modConnected) {
+    checks.push({
+      id: 'game',
+      label: 'Minecraft',
+      status: 'ok',
+      detail: 'El mod de Fabric está conectado. Los comandos se ejecutarán en tu partida.',
+    });
+  } else if (gameAdapter?.isConnected()) {
+    checks.push({
+      id: 'game',
+      label: 'Minecraft',
+      status: 'warn',
+      detail: 'El mod de Fabric no está conectado; se usará RCON o la consola de respaldo.',
+      hint: 'Abre Minecraft con el mod Chaos-Live instalado. Si juegas en solitario, entra a un mundo.',
+    });
+  } else {
+    checks.push({
+      id: 'game',
+      label: 'Minecraft',
+      status: 'error',
+      detail: 'No hay ninguna conexión con el juego. Los comandos no llegarán a Minecraft.',
+      hint: 'Arranca Minecraft con el mod instalado, o configura RCON_PASSWORD en el archivo .env.',
+    });
+  }
+
+  // 2. Plataforma de streaming
+  const platforms = engine.getPlatformAdapters();
+  const connectedPlatforms = platforms.filter((p) => p.isConnected());
+  if (platforms.length === 0) {
+    checks.push({
+      id: 'platform',
+      label: 'Plataforma',
+      status: 'error',
+      detail: 'No hay ningún adapter de plataforma registrado.',
+    });
+  } else if (connectedPlatforms.length > 0) {
+    checks.push({
+      id: 'platform',
+      label: 'Plataforma',
+      status: 'ok',
+      detail: `Conectado a: ${connectedPlatforms.map((p) => p.name).join(', ')}.`,
+    });
+  } else {
+    checks.push({
+      id: 'platform',
+      label: 'Plataforma',
+      status: 'error',
+      detail: `Sin conexión con ${platforms.map((p) => p.name).join(', ')}.`,
+      hint: 'Comprueba que TIKTOK_USERNAME esté bien escrito en .env y que la cuenta esté transmitiendo en directo ahora mismo.',
+    });
+  }
+
+  // 3. Overlay en OBS
+  const overlayCount = wsHub.getConnectedCount('overlay');
+  checks.push({
+    id: 'overlay',
+    label: 'Overlay en OBS',
+    status: overlayCount > 0 ? 'ok' : 'warn',
+    detail:
+      overlayCount > 0
+        ? `${overlayCount} overlay(s) conectados.`
+        : 'Ningún overlay conectado. La audiencia no verá las alertas.',
+    hint:
+      overlayCount > 0
+        ? undefined
+        : `Añade una fuente "Navegador" en OBS apuntando a http://localhost:${wsHub.port}/overlay`,
+  });
+
+  // 4. Reglas
+  const allRules = ruleEvaluator.getRules();
+  const enabledRules = allRules.filter((r) => r.enabled);
+  const brokenRules = allRules.filter((r) => !isCommandSafe(r.action?.command ?? ''));
+  if (brokenRules.length > 0) {
+    checks.push({
+      id: 'rules',
+      label: 'Reglas',
+      status: 'error',
+      detail: `${brokenRules.length} regla(s) tienen un comando que el motor rechazará: ${brokenRules
+        .map((r) => r.name)
+        .join(', ')}.`,
+      hint: 'Edita esas reglas y usa solo comandos permitidos. Nunca se dispararán tal y como están.',
+    });
+  } else if (enabledRules.length === 0) {
+    checks.push({
+      id: 'rules',
+      label: 'Reglas',
+      status: 'warn',
+      detail: 'No hay ninguna regla activa. Los regalos no provocarán nada en el juego.',
+      hint: 'Activa al menos una regla en la pestaña Reglas.',
+    });
+  } else {
+    checks.push({
+      id: 'rules',
+      label: 'Reglas',
+      status: 'ok',
+      detail: `${enabledRules.length} regla(s) activas de ${allRules.length}.`,
+    });
+  }
+
+  // 5. Metas comunitarias
+  const goals = goalEngine.getGoals();
+  const brokenGoals = goals.filter((g) => !isCommandSafe(g.actionCommand ?? ''));
+  if (brokenGoals.length > 0) {
+    checks.push({
+      id: 'goals',
+      label: 'Metas',
+      status: 'error',
+      detail: `${brokenGoals.length} meta(s) tienen un comando bloqueado: ${brokenGoals
+        .map((g) => g.name)
+        .join(', ')}.`,
+      hint: 'Al completarse, su recompensa no se ejecutaría.',
+    });
+  } else {
+    checks.push({
+      id: 'goals',
+      label: 'Metas',
+      status: 'ok',
+      detail: `${goals.length} meta(s) configuradas.`,
+    });
+  }
+
+  // 6. Base de datos
+  try {
+    const prisma = getPrismaClient();
+    await prisma.processedEvent.count();
+    checks.push({
+      id: 'database',
+      label: 'Historial',
+      status: 'ok',
+      detail: 'La base de datos responde y se está guardando el historial.',
+    });
+  } catch (err) {
+    checks.push({
+      id: 'database',
+      label: 'Historial',
+      status: 'warn',
+      detail: `La base de datos no responde: ${err instanceof Error ? err.message : String(err)}`,
+      hint: 'El directo funcionará igual, pero no se guardará el historial ni el progreso de las metas.',
+    });
+  }
+
+  // 7. Motor en pausa
+  if (engine.isPaused()) {
+    checks.push({
+      id: 'paused',
+      label: 'Motor',
+      status: 'warn',
+      detail: 'El motor está EN PAUSA: los eventos se acumulan sin ejecutarse.',
+      hint: 'Pulsa Reanudar en el panel antes de empezar.',
+    });
+  }
+
+  const status = checks.some((c) => c.status === 'error')
+    ? 'error'
+    : checks.some((c) => c.status === 'warn')
+      ? 'warn'
+      : 'ok';
+
+  return { status, checks };
 }
 
 /**
@@ -85,6 +387,18 @@ export async function handleApiRequest(
   }
 
   try {
+    // GET /api/health
+    // El servidor estático también responde /health, pero este router captura
+    // todo lo que empieza por /api, así que /api/health caía en el 404 final.
+    // El lanzador lo consulta para saber cuándo el servidor está listo.
+    if (pathname === '/api/health' && method === 'GET') {
+      sendJson(res, 200, {
+        status: 'ok',
+        uptime: process.uptime(),
+      });
+      return true;
+    }
+
     // GET /api/status
     if (pathname === '/api/status' && method === 'GET') {
       const queue = context.queue;
@@ -102,7 +416,9 @@ export async function handleApiRequest(
         adapters: {
           game: gameAdapter?.name || 'None',
           gameConnected: gameAdapter?.isConnected() ?? false,
-          platforms: context.engine.getPlatformAdapters().map((p) => p.name),
+          // Antes solo se listaba el nombre, así que desde el panel era
+          // imposible saber si TikTok estaba realmente conectado.
+          platforms: context.engine.getPlatformAdapters().map(describePlatformAdapter),
           clients: {
             total: wsHub.getConnectedCount(),
             overlay: wsHub.getConnectedCount('overlay'),
@@ -115,40 +431,33 @@ export async function handleApiRequest(
       return true;
     }
 
+    // GET /api/diagnostics (comprobación previa al directo)
+    if (pathname === '/api/diagnostics' && method === 'GET') {
+      sendJson(res, 200, await buildDiagnostics(context));
+      return true;
+    }
+
     // GET /api/rules
     if (pathname === '/api/rules' && method === 'GET') {
       sendJson(res, 200, context.ruleEvaluator.getRules());
       return true;
     }
 
-    // GET /api/gifts/presets (TikTok gift catalog)
+    // GET /api/gifts/presets (catálogo canónico de regalos de TikTok)
     if (pathname === '/api/gifts/presets' && method === 'GET') {
-      const presets = [
-        { name: 'Rose', coins: 1, icon: '🌹', category: 'cheap', suggestedCommand: 'summon chicken ~ ~1 ~ {CustomName:\'"${user.displayName}\"\'}', feedback: '🌹 Sent a Rose!' },
-        { name: 'Ice Cream', coins: 30, icon: '🍦', category: 'cheap', suggestedCommand: 'summon zombie ~ ~ ~ {CustomName:\'"${user.displayName}\"\'}', feedback: '🍦 Sent an Ice Cream Cone!' },
-        { name: 'Doughnut', coins: 30, icon: '🍩', category: 'cheap', suggestedCommand: 'summon skeleton ~ ~ ~ {HandItems:[{id:"minecraft:bow",Count:1b},{}],CustomName:\'"${user.displayName}\"\'}', feedback: '🍩 Sent a Doughnut!' },
-        { name: 'Heart Me', coins: 1, icon: '💖', category: 'cheap', suggestedCommand: 'particle heart ~ ~1 ~ 0.5 0.5 0.5 0.1 10', feedback: '💖 Hearted the stream!' },
-        { name: 'Finger Heart', coins: 5, icon: '🫰', category: 'cheap', suggestedCommand: 'effect give @p minecraft:speed 10 1', feedback: '🫰 Sent a Finger Heart!' },
-        { name: 'Panda', coins: 5, icon: '🐼', category: 'cheap', suggestedCommand: 'summon panda ~ ~ ~', feedback: '🐼 Spawned a Panda!' },
-        { name: 'Sunglasses', coins: 199, icon: '🕶️', category: 'medium', suggestedCommand: 'summon phantom ~ ~5 ~ {CustomName:\'"${user.displayName}\"\'}', feedback: '🕶️ Feeling cool with Sunglasses!' },
-        { name: 'Boxing Gloves', coins: 299, icon: '🥊', category: 'medium', suggestedCommand: 'effect give @p minecraft:strength 20 2', feedback: '🥊 Knockout power active!' },
-        { name: 'Money Gun', coins: 500, icon: '💸', category: 'medium', suggestedCommand: 'give @p minecraft:emerald 16', feedback: '💸 Making it rain emeralds!' },
-        { name: 'Paper Crane', coins: 99, icon: '🕊️', category: 'medium', suggestedCommand: 'effect give @p minecraft:levitation 5 1', feedback: '🕊️ Floating with Paper Crane!' },
-        { name: 'Confetti', coins: 100, icon: '🎉', category: 'medium', suggestedCommand: 'particle firework ~ ~1 ~ 0.5 0.5 0.5 0.1 30', feedback: '🎉 Confetti party!' },
-        { name: 'Whale', coins: 2150, icon: '🐋', category: 'luxury', suggestedCommand: 'summon elder_guardian ~ ~ ~', feedback: '🐋 Deep ocean titan summoned!' },
-        { name: 'Lion', coins: 29999, icon: '🦁', category: 'luxury', suggestedCommand: 'summon creeper ~ ~ ~ {powered:1b,CustomName:\'"MEGA DONATION: ${user.displayName}"\'}', feedback: '🦁 KING OF THE JUNGLE LION!' },
-        { name: 'TikTok Universe', coins: 34999, icon: '🌌', category: 'luxury', suggestedCommand: 'summon warden ~ ~ ~ {CustomName:\'"UNIVERSE BOSS: ${user.displayName}"\'}', feedback: '🌌 TIKTOK UNIVERSE HAS AWOKEN!' },
-        { name: 'Dragon', coins: 26999, icon: '🐉', category: 'luxury', suggestedCommand: 'summon ender_dragon ~ ~10 ~', feedback: '🐉 THE ENDER DRAGON HAS SPAWNED!' },
-        { name: 'Galaxy', coins: 1000, icon: '🪐', category: 'luxury', suggestedCommand: 'summon lightning_bolt ~ ~ ~', feedback: '🪐 Galaxy cosmic strike!' },
-      ];
-      sendJson(res, 200, presets);
+      sendJson(res, 200, TIKTOK_GIFTS);
       return true;
     }
 
     // POST /api/rules (Create new rule)
     if (pathname === '/api/rules' && method === 'POST') {
-      const raw = await readBody(req);
-      const parsed = JSON.parse(raw);
+      const parsed = await readJsonBody(req);
+
+      const errors = validateRulePayload(parsed);
+      if (errors.length > 0) {
+        sendJson(res, 400, { error: 'La regla no es válida', details: errors });
+        return true;
+      }
 
       const newRule: RuleDefinition = {
         id: parsed.id || `rule-${randomUUID().slice(0, 8)}`,
@@ -226,8 +535,7 @@ export async function handleApiRequest(
     // PUT /api/rules/:id (Update existing rule)
     if (pathname.startsWith('/api/rules/') && method === 'PUT') {
       const id = pathname.slice('/api/rules/'.length);
-      const raw = await readBody(req);
-      const updates = JSON.parse(raw);
+      const updates = await readJsonBody(req);
 
       const currentRules = [...context.ruleEvaluator.getRules()];
       const index = currentRules.findIndex((r) => r.id === id);
@@ -242,6 +550,14 @@ export async function handleApiRequest(
         ...updates,
         id, // preserve ID
       };
+
+      // Se valida la regla ya fusionada, no solo el parche: una actualización
+      // parcial puede dejar la regla en un estado inválido.
+      const errors = validateRulePayload(updatedRule as unknown as Record<string, unknown>);
+      if (errors.length > 0) {
+        sendJson(res, 400, { error: 'La regla no es válida', details: errors });
+        return true;
+      }
 
       currentRules[index] = updatedRule;
       context.ruleEvaluator.setRules(currentRules);
@@ -279,8 +595,16 @@ export async function handleApiRequest(
 
     // POST /api/goals (Create new community goal)
     if (pathname === '/api/goals' && method === 'POST') {
-      const raw = await readBody(req);
-      const parsed = JSON.parse(raw);
+      const parsed = await readJsonBody(req);
+
+      const commandError = validateCommand(
+        parsed.actionCommand ?? 'say Community Goal Completed!',
+        'actionCommand',
+      );
+      if (commandError) {
+        sendJson(res, 400, { error: 'La meta no es válida', details: [commandError] });
+        return true;
+      }
 
       const newGoal = context.goalEngine.addGoal({
         name: parsed.name || 'Community Goal',
@@ -318,8 +642,15 @@ export async function handleApiRequest(
     // PUT /api/goals/:id (Update community goal)
     if (pathname.startsWith('/api/goals/') && method === 'PUT') {
       const id = pathname.slice('/api/goals/'.length);
-      const raw = await readBody(req);
-      const updates = JSON.parse(raw);
+      const updates = await readJsonBody(req);
+
+      if (updates.actionCommand !== undefined) {
+        const commandError = validateCommand(updates.actionCommand, 'actionCommand');
+        if (commandError) {
+          sendJson(res, 400, { error: 'La meta no es válida', details: [commandError] });
+          return true;
+        }
+      }
 
       const updated = context.goalEngine.updateGoal(id, {
         name: updates.name,
@@ -361,17 +692,16 @@ export async function handleApiRequest(
 
     // GET /api/overlay-settings
     if (pathname === '/api/overlay-settings' && method === 'GET') {
-      sendJson(res, 200, currentOverlaySettings);
+      sendJson(res, 200, context.overlaySettings.get());
       return true;
     }
 
     // PUT /api/overlay-settings
     if (pathname === '/api/overlay-settings' && method === 'PUT') {
-      const raw = await readBody(req);
-      const updates = JSON.parse(raw);
-      currentOverlaySettings = { ...currentOverlaySettings, ...updates };
-      context.wsHub.broadcastToOverlay('OVERLAY_SETTINGS_UPDATED', currentOverlaySettings);
-      sendJson(res, 200, { success: true, settings: currentOverlaySettings });
+      const updates = await readJsonBody(req);
+      const settings = context.overlaySettings.update(updates);
+      context.wsHub.broadcastToOverlay('OVERLAY_SETTINGS_UPDATED', settings);
+      sendJson(res, 200, { success: true, settings });
       return true;
     }
 
@@ -404,8 +734,7 @@ export async function handleApiRequest(
 
     // POST /api/test/event (Inject synthetic event)
     if (pathname === '/api/test/event' && method === 'POST') {
-      const raw = await readBody(req);
-      const data = JSON.parse(raw);
+      const data = await readJsonBody(req);
 
       const event: ChaosEvent = {
         id: data.id || `test-evt-${randomUUID()}`,
@@ -451,9 +780,13 @@ export async function handleApiRequest(
     sendJson(res, 404, { error: `Endpoint not found: ${method} ${pathname}` });
     return true;
   } catch (err) {
+    if (err instanceof BadRequestError) {
+      sendJson(res, 400, { error: 'Petición no válida', details: [err.message] });
+      return true;
+    }
     logger.error({ err, pathname, method }, 'Error handling API request');
     sendJson(res, 500, {
-      error: 'Internal Server Error',
+      error: 'Error interno del servidor',
       message: err instanceof Error ? err.message : String(err),
     });
     return true;

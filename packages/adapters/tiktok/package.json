@@ -1,6 +1,6 @@
 {
   "name": "@chaos-live/adapter-tiktok",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "TikTok LIVE platform adapter — wraps tiktok-live-connector behind PlatformAdapter interface",
   "type": "module",
   "main": "./dist/index.js",

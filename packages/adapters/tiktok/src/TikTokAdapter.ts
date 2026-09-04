@@ -3,6 +3,7 @@ import type { PlatformAdapter } from '@chaos-live/core';
 import type { ChaosEvent } from '@chaos-live/shared-protocol';
 import {
   normalizeGift,
+  shouldEmitGift,
   normalizeLike,
   normalizeComment,
   normalizeFollow,
@@ -157,6 +158,12 @@ export class TikTokAdapter implements PlatformAdapter {
 
   private attachListeners(conn: WebcastPushConnection): void {
     conn.on('gift', (data: any) => {
+      // Descartar las emisiones intermedias de una racha: TikTok repite el
+      // evento mientras el espectador mantiene pulsado y solo la última trae el
+      // `repeatCount` definitivo.
+      if (!shouldEmitGift(data)) {
+        return;
+      }
       this.emitEvent(normalizeGift(data));
     });
 

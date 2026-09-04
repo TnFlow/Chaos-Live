@@ -129,6 +129,33 @@ export class HybridGameAdapter implements GameAdapter {
     return this.fallbackAdapter.executeAction(action);
   }
 
+  /**
+   * Ejecuta la accion por el adapter de respaldo (RCON si esta conectado, si no
+   * la consola) y resuelve siempre.
+   *
+   * Antes se encadenaba `.then(resolve)` sin `.catch`: si el respaldo rechazaba
+   * —justo el caso probable, porque solo se llega aqui cuando el mod ya ha
+   * fallado— la promesa de `executeViaMod` no se resolvia nunca (la accion
+   * quedaba colgada) y ademas Node abortaba el proceso por rechazo no
+   * gestionado, tirando el servidor a mitad de directo.
+   */
+  private resolveViaFallback(action: GameAction, resolve: (result: ActionResult) => void): void {
+    const adapter =
+      this.rconAdapter && this.rconAdapter.isConnected() ? this.rconAdapter : this.fallbackAdapter;
+
+    const startedAt = Date.now();
+    adapter.executeAction(action).then(resolve, (err: unknown) => {
+      const error = err instanceof Error ? err.message : String(err);
+      logger.error({ err, actionId: action.id, adapter: adapter.name }, 'Fallback adapter failed');
+      resolve({
+        actionId: action.id,
+        success: false,
+        durationMs: Date.now() - startedAt,
+        error,
+      });
+    });
+  }
+
   private executeViaMod(action: GameAction): Promise<ActionResult> {
     return new Promise<ActionResult>((resolve) => {
       const timer = setTimeout(() => {
@@ -139,11 +166,7 @@ export class HybridGameAdapter implements GameAdapter {
         );
 
         // On timeout, fall back to RCON or Console
-        if (this.rconAdapter && this.rconAdapter.isConnected()) {
-          this.rconAdapter.executeAction(action).then(resolve);
-        } else {
-          this.fallbackAdapter.executeAction(action).then(resolve);
-        }
+        this.resolveViaFallback(action, resolve);
       }, this.modTimeoutMs);
 
       this.pendingAcks.set(action.id, { resolve, timer });
@@ -152,11 +175,7 @@ export class HybridGameAdapter implements GameAdapter {
       if (!sent) {
         clearTimeout(timer);
         this.pendingAcks.delete(action.id);
-        if (this.rconAdapter && this.rconAdapter.isConnected()) {
-          this.rconAdapter.executeAction(action).then(resolve);
-        } else {
-          this.fallbackAdapter.executeAction(action).then(resolve);
-        }
+        this.resolveViaFallback(action, resolve);
       }
     });
   }

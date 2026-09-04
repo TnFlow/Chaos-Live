@@ -133,9 +133,8 @@ To connect to a live TikTok stream:
    ```
    The middleware uses a 3-state circuit breaker (`CLOSED` ➜ `OPEN` ➜ `HALF_OPEN`) with exponential backoff to handle connection drops gracefully.
 
-### Twitch EventSub
-Twitch integration is supported out-of-the-box via `TwitchAdapter`. It normalizes Bits cheers (`channel.cheer`), subscriptions, follows, channel points redemptions, chat, and raids.
-- Channel points custom rewards map directly to gift rules based on reward name and points cost!
+### Twitch EventSub — ⚠️ not wired into the app
+`TwitchAdapter` exists and is unit-tested, but **the application never instantiates it**: `packages/app/src/main.ts` composes exactly one platform adapter, TikTok or the mock generator. Turning it on means adding `@chaos-live/adapter-twitch` to `packages/app`'s dependencies and passing both adapters to `platformAdapters` (the `EventEngine` already accepts a list). See [ADR-0003](adr/0003-alcance-single-tenant.md).
 
 ### Mock Mode (Offline Simulation)
 Set `USE_MOCK=true` in `.env`. The mock adapter generates randomized, realistic stream traffic (roses, lions, likes, follows, chat) for stream rehearsal.
@@ -169,7 +168,7 @@ Access the management dashboard in any web browser at:
 - **Event Feed:** Streaming terminal showing every incoming event, donor name, and the corresponding Minecraft action.
 
 ### Rule Editor & Hot Reloading
-- Click the **⚙️ Rules** tab.
+- Click the **⚙️ Reglas** tab (the dashboard is in Spanish).
 - Toggle any rule on or off instantly with the toggle button.
 - Click **➕ Create New Rule** or **Edit**:
   - Set Rule Name, Priority (1–100), Event Type, and Value Threshold.
@@ -181,16 +180,36 @@ Access the management dashboard in any web browser at:
   - **Hot Reload:** Changes are saved directly to `rules.json` and hot-reloaded into the running engine **without restarting the server**.
 
 ### Community Goal Management
-- Click the **🎯 Goals** tab.
+- Click the **🎯 Metas** tab.
 - Visual progress bars for collective stream milestones (e.g. `🌹 50 Roses ➜ Summon Warden`).
 - When a goal reaches 100%, the middleware automatically triggers the celebration particle banner on the OBS overlay, dispatches the boss action with elevated priority (`score: 200`), and repeats the cycle if configured.
-- Streamers can reset progress at any time using the **🔄 Reset Progress** button.
+- Streamers can reset progress at any time using the **🔄 Reiniciar** button.
 
-### Emergency Controls (Action Bar)
-Located in the top right of the dashboard header:
-- ⏸️ **Pause Actions:** Halts command dispatching immediately while continuing to buffer events in the queue (crucial when you're navigating lava, void, or tight parkour).
-- ▶️ **Resume Actions:** Resumes queued execution.
-- 🧹 **Purge Queue:** Clears all queued commands instantly if chat triggers an overwhelming spam attack.
+### Emergency Controls
+In the **📊 Monitor** tab:
+- ⏸️ **Pausar todo:** Halts command dispatching immediately while continuing to buffer events in the queue (crucial when you're navigating lava, void, or tight parkour).
+- ▶️ **Reanudar:** Resumes queued execution.
+- 🧹 **Vaciar la cola:** Clears all queued commands instantly if chat triggers an overwhelming spam attack.
+
+### Pre-stream check (🩺 Comprobar ahora)
+
+In the **📊 Monitor** tab, press **🩺 Comprobar ahora** before going live. It verifies, in one place, everything that usually breaks mid-stream:
+
+- Whether the Fabric mod (or RCON) is actually connected.
+- Whether the streaming platform is connected and live.
+- Whether an OBS Browser Source is attached to the overlay.
+- Whether any saved rule or goal has a command the engine will refuse to run (those never fire, silently, without this check).
+- Whether the database is writable.
+
+Each failed check comes with a concrete suggestion of what to do about it.
+
+### Logs on disk
+
+Every run writes `logs/chaos-live-YYYY-MM-DD.log` in JSON, alongside the pretty console output, so a failure can be diagnosed after the stream is over. Disable it with `LOG_TO_FILE=false`, or change the folder with `LOG_DIR`.
+
+### Network exposure
+
+The server binds to `127.0.0.1` by default. **The management API has no authentication**, so it must stay reachable only from the streaming PC. `HOST=0.0.0.0` opens rule editing and action injection to your whole local network; the server logs a warning when you do it.
 
 ### Testing with the Simulator
 - Click the **🧪 Simulator** tab (or the quick simulator panel on the Monitor tab).

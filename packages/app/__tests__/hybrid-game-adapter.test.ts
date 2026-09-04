@@ -128,4 +128,30 @@ describe('HybridGameAdapter', () => {
     expect(mockRcon.executeAction).not.toHaveBeenCalled();
     expect(mockConsole.executeAction).not.toHaveBeenCalled();
   });
+
+  // Si el mod acepta la accion pero nunca responde, se cae al respaldo. Cuando
+  // ese respaldo tambien fallaba, la promesa quedaba pendiente para siempre y el
+  // rechazo sin gestionar tumbaba el proceso: el directo se quedaba sin efectos.
+  it('resolves with a failed result when the fallback adapter rejects after a mod timeout', async () => {
+    mockWsHub.isModConnected.mockReturnValue(true);
+    mockWsHub.sendActionToMod.mockReturnValue(true);
+    mockConsole.executeAction.mockRejectedValue(new Error('Console exploto'));
+
+    const result = await adapter.executeAction(sampleAction);
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('Console exploto');
+    expect(result.actionId).toBe(sampleAction.id);
+  });
+
+  it('resolves with a failed result when the mod channel is unavailable and the fallback rejects', async () => {
+    mockWsHub.isModConnected.mockReturnValue(true);
+    mockWsHub.sendActionToMod.mockReturnValue(false);
+    mockConsole.executeAction.mockRejectedValue(new Error('Console caido'));
+
+    const result = await adapter.executeAction(sampleAction);
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('Console caido');
+  });
 });

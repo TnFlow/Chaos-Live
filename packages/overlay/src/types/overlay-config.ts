@@ -1,45 +1,20 @@
-export type OverlayLayout = 'landscape' | 'vertical' | 'compact' | 'modular';
-export type OverlayTheme = 'cyberpunk' | 'streamtoearn' | 'obsidian' | 'tiktok-rose' | 'amber-sunset';
-export type RewardsDisplayMode = 'both' | 'ticker' | 'menu' | 'off';
-export type WidgetPosition = 'top' | 'bottom' | 'left' | 'right' | 'hidden';
-
-export interface OverlayCustomSettings {
-  layout: OverlayLayout;
-  theme: OverlayTheme;
-  scale: number; // 0.7 to 1.5
-  masterVolume: number; // 0.0 to 1.0
-  soundEnabled: boolean;
-  
-  // Widget Visibility & Positions
-  goalPosition: 'top' | 'bottom' | 'hidden';
-  feedPosition: 'left' | 'right' | 'hidden';
-  leaderboardPosition: 'right' | 'left' | 'hidden';
-  rewardsMode: RewardsDisplayMode;
-  marqueeSpeedSeconds: number; // 15 to 45
-  
-  // Visual Aesthetics
-  glassIntensity: number; // 0.4 to 0.95
-  glowIntensity: number; // 0.2 to 1.0
-  fontFamily: 'Outfit' | 'Inter' | 'Plus Jakarta Sans' | 'JetBrains Mono';
-  bannerDurationSeconds: number; // 3 to 10
-}
-
-export const DEFAULT_OVERLAY_SETTINGS: OverlayCustomSettings = {
-  layout: 'landscape',
-  theme: 'cyberpunk',
-  scale: 1.0,
-  masterVolume: 0.8,
-  soundEnabled: true,
-  goalPosition: 'top',
-  feedPosition: 'left',
-  leaderboardPosition: 'right',
-  rewardsMode: 'both',
-  marqueeSpeedSeconds: 28,
-  glassIntensity: 0.75,
-  glowIntensity: 0.8,
-  fontFamily: 'Outfit',
-  bannerDurationSeconds: 4.8,
-};
+/**
+ * Tipos y valores por defecto del overlay.
+ *
+ * La forma de los ajustes y sus valores por defecto viven en
+ * `@chaos-live/shared-protocol`, porque son contrato con el backend que los
+ * persiste y los sirve. Aquí solo se reexportan por comodidad, junto con las
+ * paletas de tema, que son puramente presentación del cliente.
+ */
+export { DEFAULT_OVERLAY_SETTINGS } from '@chaos-live/shared-protocol';
+export type {
+  OverlaySettings,
+  OverlaySettings as OverlayCustomSettings,
+  OverlayLayout,
+  OverlayTheme,
+  RewardsDisplayMode,
+  WidgetPosition,
+} from '@chaos-live/shared-protocol';
 
 export const THEME_PALETTES = {
   cyberpunk: {

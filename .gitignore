@@ -27,6 +27,10 @@ logs/
 *.log
 npm-debug.log*
 
+# Estado de ejecucion del streamer (se regenera con los valores por defecto)
+packages/app/config/overlay-settings.json
+config/overlay-settings.json
+
 # Database
 *.db
 *.db-journal

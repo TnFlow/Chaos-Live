@@ -44,6 +44,13 @@ export {
   type GoalProgressUpdate,
 } from './goals/goal-engine.js';
 
+// Session state
+export {
+  SessionLeaderboard,
+  type LeaderboardEntry,
+  type SessionLeaderboardOptions,
+} from './session/session-leaderboard.js';
+
 // Database
 export {
   getPrismaClient,

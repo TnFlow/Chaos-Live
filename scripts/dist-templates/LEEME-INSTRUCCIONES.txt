@@ -1,0 +1,71 @@
+=============================================================================
+  ⚡ CHAOS-LIVE v1.0.0 — PAQUETE PORTÁTIL PARA STREAMERS (WINDOWS) ⚡
+  Conecta tus directos de TikTok LIVE y Twitch en tiempo real con Minecraft
+=============================================================================
+
+¡Gracias por usar Chaos-Live!
+Este paquete es 100% autónomo y portátil: incluye su propio runtime interno
+en la carpeta 'bin\', por lo que funciona inmediatamente en cualquier PC con
+Windows sin necesidad de instalar Node.js ni configurar terminales.
+
+-----------------------------------------------------------------------------
+1. INICIO RÁPIDO EN 1 CLIC
+-----------------------------------------------------------------------------
+1. Haz doble clic en "Iniciar-Chaos-Live.bat".
+2. Se abrirá una ventana de consola y automáticamente tu navegador en:
+   👉 http://localhost:8080/dashboard
+3. ¡Ya estás listo para probar! En la pestaña "🧪 Simulator" o en el panel
+   lateral puedes presionar "🌹 1x Rose" o "🦁 1x Lion" para probar acciones.
+
+-----------------------------------------------------------------------------
+2. CONFIGURAR TU CANAL DE TIKTOK / TWITCH
+-----------------------------------------------------------------------------
+- Opción Rápida: Haz doble clic en "Configurar-Streamer.bat" y responde las
+  preguntas (tu nombre de usuario, si quieres modo prueba, etc.).
+- Opción Manual: Abre el archivo ".env" con el Bloc de notas y escribe:
+    TIKTOK_USERNAME=tu_usuario_de_tiktok (sin @)
+    USE_MOCK=false
+
+-----------------------------------------------------------------------------
+3. CONECTAR CON MINECRAFT
+-----------------------------------------------------------------------------
+Tienes 2 opciones para jugar:
+
+Opción A (Recomendada): Mod de Fabric 1.20.1
+- Instala Fabric Loader y Fabric API para Minecraft 1.20.1.
+- Ejecuta "Instalar-Mod-Minecraft.bat" o coloca el archivo .jar en tu carpeta
+  de mods (%APPDATA%\.minecraft\mods).
+- ¡Listo! El mod se conecta hacia Chaos-Live automáticamente (sin abrir puertos).
+
+Opción B: Servidor con RCON (Sin mods)
+- Si juegas en un servidor dedicado (Paper / Vanilla / Spigot), activa RCON en
+  server.properties:
+    enable-rcon=true
+    rcon.port=25575
+    rcon.password=tu_contraseña
+- En el archivo .env pon esa misma contraseña.
+
+-----------------------------------------------------------------------------
+4. AGREGAR A OBS STUDIO
+-----------------------------------------------------------------------------
+1. En OBS Studio, agrega una nueva fuente: "Navegador" (Browser Source).
+2. Configura:
+   - URL: http://localhost:8080/overlay
+   - Ancho: 1920
+   - Alto: 1080
+   - CSS personalizado: Déjalo vacío (el fondo es transparente).
+3. ¡Tus espectadores verán las alertas animadas, la tabla de mejores donadores,
+   la barra de meta comunitaria y el feed de eventos en vivo!
+
+-----------------------------------------------------------------------------
+5. PANEL DE CONTROL (DASHBOARD)
+-----------------------------------------------------------------------------
+En http://localhost:8080/dashboard puedes:
+- 📊 Ver el monitor en tiempo real de eventos y comandos.
+- ⚙️ Crear y editar reglas con recarga en caliente sin reiniciar el juego.
+- 🎯 Ver y reiniciar las metas comunitarias (ej: "🌹 50 Rosas ➜ Invocar Warden").
+- ⏸️ Pausar las acciones de inmediato si caes en lava o estás en peligro.
+- 🧹 Purgar la cola si te mandan demasiado spam.
+
+¡Que disfrutes tu transmisión interactiva con Chaos-Live!
+=============================================================================

@@ -29,6 +29,12 @@ export interface ModActionResult {
 
 export interface WebSocketHubConfig {
   port: number;
+  /**
+   * Interfaz en la que escuchar. Por defecto `127.0.0.1`: la API de gestión no
+   * tiene autenticación, así que solo debe ser accesible desde el propio PC.
+   * Ponerlo a `0.0.0.0` la expone a toda la red local.
+   */
+  host?: string;
   staticDir?: string;
   onClientConnected?: (socket: WebSocket, client: ConnectedClient) => void;
   onModActionResult?: (result: ModActionResult) => void;
@@ -44,6 +50,7 @@ export interface WebSocketHubConfig {
  */
 export class WebSocketHub {
   public readonly port: number;
+  public readonly host: string;
   private readonly staticDir: string;
   private readonly onClientConnected?: (socket: WebSocket, client: ConnectedClient) => void;
   private readonly onModActionResult?: (result: ModActionResult) => void;
@@ -55,6 +62,7 @@ export class WebSocketHub {
 
   constructor(config: WebSocketHubConfig) {
     this.port = config.port;
+    this.host = config.host ?? '127.0.0.1';
     this.onClientConnected = config.onClientConnected;
     this.onModActionResult = config.onModActionResult;
     this.onHttpRequest = config.onHttpRequest;
@@ -84,16 +92,8 @@ export class WebSocketHub {
 
   public async start(): Promise<void> {
     return new Promise((resolve, reject) => {
-      this.server = http.createServer(async (req, res) => {
-        if (this.onHttpRequest) {
-          try {
-            const handled = await this.onHttpRequest(req, res);
-            if (handled) return;
-          } catch (err) {
-            logger.error({ err }, 'Error in onHttpRequest hook');
-          }
-        }
-        this.handleHttpRequest(req, res);
+      this.server = http.createServer((req, res) => {
+        void this.routeHttpRequest(req, res);
       });
 
       this.wss = new WebSocketServer({ server: this.server });
@@ -107,11 +107,16 @@ export class WebSocketHub {
         reject(err);
       });
 
-      this.server.listen(this.port, () => {
+      this.server.listen(this.port, this.host, () => {
         logger.info(
-          { port: this.port, overlayUrl: `http://localhost:${this.port}/` },
-          `🌐 WebSocket Hub & Static Server listening on port ${this.port}`,
+          { port: this.port, host: this.host, overlayUrl: `http://localhost:${this.port}/` },
+          `🌐 WebSocket Hub & Static Server listening on ${this.host}:${this.port}`,
         );
+        if (this.host === '0.0.0.0') {
+          logger.warn(
+            'El servidor escucha en todas las interfaces de red. La API de gestión NO tiene autenticación: usa HOST=127.0.0.1 salvo que sepas lo que haces.',
+          );
+        }
         resolve();
       });
     });
@@ -290,6 +295,38 @@ export class WebSocketHub {
       logger.warn({ err }, 'WebSocket client error');
       this.clients.delete(socket);
     });
+  }
+
+  /**
+   * Punto de entrada de cada peticion HTTP. Se encarga de que el callback de
+   * `createServer` nunca reciba una promesa rechazada: antes el callback era
+   * `async`, asi que cualquier excepcion sincrona de `handleHttpRequest` se
+   * convertia en un rechazo no gestionado y Node cerraba el proceso entero.
+   * Una peticion mal formada no puede tumbar el servidor en pleno directo.
+   */
+  private async routeHttpRequest(
+    req: http.IncomingMessage,
+    res: http.ServerResponse,
+  ): Promise<void> {
+    try {
+      if (this.onHttpRequest) {
+        try {
+          const handled = await this.onHttpRequest(req, res);
+          if (handled) return;
+        } catch (err) {
+          logger.error({ err }, 'Error in onHttpRequest hook');
+        }
+      }
+      this.handleHttpRequest(req, res);
+    } catch (err) {
+      logger.error({ err, url: req.url }, 'Unhandled error while serving HTTP request');
+      if (!res.headersSent) {
+        res.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify({ error: 'Error interno del servidor' }));
+      } else {
+        res.end();
+      }
+    }
   }
 
   private handleHttpRequest(req: http.IncomingMessage, res: http.ServerResponse): void {

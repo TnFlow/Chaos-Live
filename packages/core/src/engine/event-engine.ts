@@ -2,7 +2,8 @@ import type { ChaosEvent, GameAction } from '@chaos-live/shared-protocol';
 import type { PlatformAdapter } from '../domain/ports/platform-adapter.js';
 import type { GameAdapter } from '../domain/ports/game-adapter.js';
 import type { QueuePort, QueueItem } from '../domain/ports/queue-port.js';
-import type { PipelineState, PipelineLogEntry } from '../domain/pipeline-state.js';
+import type { PipelineLogEntry } from '../domain/pipeline-state.js';
+import type { GoalEngine } from '../goals/goal-engine.js';
 import { RuleEvaluator } from './rule-evaluator.js';
 
 export type PipelineListener = (entry: PipelineLogEntry) => void;
@@ -12,6 +13,13 @@ export interface EventEngineConfig {
   queue: QueuePort;
   gameAdapter?: GameAdapter;
   platformAdapters?: PlatformAdapter[];
+  /**
+   * Motor de metas comunitarias. Si se proporciona, cada evento avanza las metas
+   * antes de evaluarse contra las reglas, dentro del mismo pipeline. Sin esto,
+   * las metas tendrían que engancharse aparte al adapter de plataforma y sus
+   * acciones se encolarían sin pasar por la observabilidad del motor.
+   */
+  goalEngine?: GoalEngine;
   /** Dispatch check interval in milliseconds. Default: 50ms. */
   dispatchIntervalMs?: number;
   /** Pipeline state transition listener (e.g. for structured Pino logging). */
@@ -26,6 +34,7 @@ export interface EventEngineConfig {
 export class EventEngine {
   private readonly ruleEvaluator: RuleEvaluator;
   private readonly queue: QueuePort;
+  private readonly goalEngine?: GoalEngine;
   private gameAdapter?: GameAdapter;
   private readonly platformAdapters: Set<PlatformAdapter> = new Set();
   private readonly dispatchIntervalMs: number;
@@ -39,6 +48,7 @@ export class EventEngine {
   constructor(config: EventEngineConfig) {
     this.ruleEvaluator = config.ruleEvaluator ?? new RuleEvaluator();
     this.queue = config.queue;
+    this.goalEngine = config.goalEngine;
     this.gameAdapter = config.gameAdapter;
     this.dispatchIntervalMs = config.dispatchIntervalMs ?? 50;
 
@@ -164,6 +174,7 @@ export class EventEngine {
       correlationId: event.id,
       state: 'EVENT_RECEIVED',
       timestamp: now,
+      event,
       details: {
         platform: event.platform,
         type: event.type,
@@ -189,7 +200,13 @@ export class EventEngine {
       timestamp: now,
     });
 
-    // 3. RULE EVALUATION
+    // 3. COMMUNITY GOALS
+    // Se procesan antes que las reglas: un mismo evento puede avanzar una meta
+    // y además disparar su propia regla, y la recompensa de la meta debe
+    // entrar en la cola con su prioridad elevada.
+    await this.processGoals(event, now);
+
+    // 4. RULE EVALUATION
     const evalResult = this.ruleEvaluator.evaluate(event, now);
 
     if (evalResult.status === 'NO_MATCH') {
@@ -215,7 +232,7 @@ export class EventEngine {
       return;
     }
 
-    // 4. RULE_MATCHED
+    // 5. RULE_MATCHED
     this.emitState({
       correlationId: event.id,
       state: 'RULE_MATCHED',
@@ -227,7 +244,7 @@ export class EventEngine {
       },
     });
 
-    // 5. EVENT_QUEUED
+    // 6. EVENT_QUEUED
     const queueItem: QueueItem = {
       action: evalResult.action,
       score: evalResult.action.priority,
@@ -254,6 +271,65 @@ export class EventEngine {
 
     // Trigger immediate dispatch attempt
     void this.processQueue();
+  }
+
+  /**
+   * Avanza las metas comunitarias con el evento recibido y encola la recompensa
+   * de las que se completen.
+   *
+   * Los errores del motor de metas no interrumpen el pipeline: una meta que
+   * falla no debe impedir que la regla del mismo evento se dispare en directo.
+   */
+  private async processGoals(event: ChaosEvent, now: number): Promise<void> {
+    if (!this.goalEngine) return;
+
+    let updates;
+    try {
+      updates = await this.goalEngine.processEvent(event);
+    } catch (err) {
+      this.emitState({
+        correlationId: event.id,
+        state: 'EVENT_FAILED',
+        timestamp: Date.now(),
+        details: {
+          stage: 'GOALS',
+          error: err instanceof Error ? err.message : String(err),
+        },
+      });
+      return;
+    }
+
+    for (const update of updates) {
+      this.emitState({
+        correlationId: event.id,
+        state: update.justCompleted ? 'GOAL_COMPLETED' : 'GOAL_PROGRESS',
+        timestamp: now,
+        details: update as unknown as Record<string, unknown>,
+      });
+
+      if (!update.triggeredAction) {
+        continue;
+      }
+
+      const admitted = this.queue.enqueue(
+        {
+          action: update.triggeredAction,
+          score: update.triggeredAction.priority,
+          enqueuedAt: now,
+        },
+        now,
+      );
+
+      if (!admitted) {
+        this.emitState({
+          correlationId: update.triggeredAction.id,
+          state: 'EVENT_FAILED',
+          timestamp: now,
+          action: update.triggeredAction,
+          details: { reason: 'QUEUE_CAPACITY_REJECTED', goalId: update.goalId },
+        });
+      }
+    }
   }
 
   /**
@@ -292,12 +368,10 @@ export class EventEngine {
       correlationId: action.id,
       state: 'ACTION_DISPATCHED',
       timestamp: dispatchTime,
+      action,
       details: {
         actionType: action.actionType,
         command: action.command,
-        icon: action.icon,
-        imageUrl: action.imageUrl,
-        viewerFeedback: action.viewerFeedback as unknown as Record<string, unknown>,
       },
     });
 
@@ -309,6 +383,7 @@ export class EventEngine {
           correlationId: action.id,
           state: 'EVENT_COMPLETED',
           timestamp: Date.now(),
+          action,
           details: {
             durationMs: result.durationMs,
             response: result.response,
@@ -319,6 +394,7 @@ export class EventEngine {
           correlationId: action.id,
           state: 'EVENT_FAILED',
           timestamp: Date.now(),
+          action,
           details: {
             durationMs: result.durationMs,
             error: result.error,
@@ -330,6 +406,7 @@ export class EventEngine {
         correlationId: action.id,
         state: 'EVENT_FAILED',
         timestamp: Date.now(),
+        action,
         details: {
           error: err instanceof Error ? err.message : String(err),
         },
