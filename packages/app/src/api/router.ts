@@ -36,7 +36,38 @@ export interface ApiContext {
   overlaySettings: OverlaySettingsStore;
   rulesFilePath?: string;
   onInjectEvent?: (event: ChaosEvent) => void;
+  /**
+   * Restringe el router a `PUBLIC_READONLY_ROUTES`.
+   *
+   * Lo usa la superficie de overlay, que es la unica que puede llegar a
+   * publicarse. Sin esto, quien alcanzase ese puerto tendria tambien
+   * `POST /api/rules` y `POST /api/queue/pause`, es decir el control de la
+   * partida en directo.
+   */
+  publicOnly?: boolean;
+  /**
+   * Base de las URLs de widget, tal y como hay que pegarlas en TikTok LIVE
+   * Studio. Viaja en `/api/status` porque el panel se sirve desde el puerto de
+   * gestion y no tiene forma de adivinar el puerto publico.
+   */
+  overlayBaseUrl?: string;
 }
+
+/**
+ * Lo unico que el overlay necesita leer, y por tanto lo unico que se sirve en
+ * la superficie publica.
+ *
+ * Es una lista blanca por metodo y ruta exactos, no un filtro por verbo: si
+ * manana se anade un GET nuevo a la API de gestion, no debe volverse publico
+ * solo por ser un GET.
+ */
+export const PUBLIC_READONLY_ROUTES: ReadonlySet<string> = new Set([
+  'GET /api/health',
+  'GET /api/rules',
+  'GET /api/goals',
+  'GET /api/overlay-settings',
+  'GET /api/gifts/presets',
+]);
 
 
 function sendJson(res: http.ServerResponse, statusCode: number, data: unknown): void {
@@ -386,6 +417,13 @@ export async function handleApiRequest(
     return false;
   }
 
+  if (context.publicOnly && !PUBLIC_READONLY_ROUTES.has(`${method} ${pathname}`)) {
+    // 404 y no 403: la superficie publica no debe ni confirmar que estas rutas
+    // existen en otro puerto.
+    sendJson(res, 404, { error: 'Not found' });
+    return true;
+  }
+
   try {
     // GET /api/health
     // El servidor estático también responde /health, pero este router captura
@@ -408,6 +446,7 @@ export async function handleApiRequest(
       sendJson(res, 200, {
         status: 'ok',
         uptime: process.uptime(),
+        overlayBaseUrl: context.overlayBaseUrl,
         isPaused: context.engine.isPaused(),
         queue: {
           size: queue.size(),

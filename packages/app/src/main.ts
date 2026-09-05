@@ -140,6 +140,26 @@ async function bootstrap(): Promise<void> {
   let hybridAdapter: HybridGameAdapter;
   let engine: EventEngine;
 
+  /**
+   * Estado inicial que recibe un overlay al conectarse.
+   *
+   * Lo mandan los dos hubs, asi que vive aqui: un widget servido desde la
+   * superficie publica tiene que arrancar con las mismas metas, reglas,
+   * ajustes y clasificacion que uno servido desde la de gestion.
+   */
+  const sendOverlayHandshake = (socket: import('ws').WebSocket): void => {
+    socket.send(JSON.stringify({ type: 'INITIAL_GOALS', payload: goalEngine.getGoals() }));
+    socket.send(JSON.stringify({ type: 'INITIAL_RULES', payload: ruleEvaluator.getRules() }));
+    socket.send(
+      JSON.stringify({ type: 'INITIAL_OVERLAY_SETTINGS', payload: overlaySettings.get() }),
+    );
+    // Reenviar la clasificacion acumulada: un overlay que se reconecta a mitad
+    // del directo debe recuperar a los mayores contribuyentes.
+    socket.send(
+      JSON.stringify({ type: 'INITIAL_LEADERBOARD', payload: sessionLeaderboard.getTop() }),
+    );
+  };
+
   // Initialize WebSocket Hub for OBS Overlay, Fabric Mod, and REST API
   const wsHub = new WebSocketHub({
     port: config.wsPort,
@@ -152,6 +172,7 @@ async function bootstrap(): Promise<void> {
         wsHub,
         queue,
         overlaySettings,
+        overlayBaseUrl: `http://${config.overlayHost === '0.0.0.0' ? '127.0.0.1' : config.overlayHost}:${config.overlayPort}`,
         onInjectEvent: (event) => {
           void engine.handleEvent(event);
         },
@@ -159,38 +180,53 @@ async function bootstrap(): Promise<void> {
     },
     onClientConnected: (socket, client) => {
       if (client.clientType === 'overlay') {
-        socket.send(
-          JSON.stringify({
-            type: 'INITIAL_GOALS',
-            payload: goalEngine.getGoals(),
-          }),
-        );
-        socket.send(
-          JSON.stringify({
-            type: 'INITIAL_RULES',
-            payload: ruleEvaluator.getRules(),
-          }),
-        );
-        socket.send(
-          JSON.stringify({
-            type: 'INITIAL_OVERLAY_SETTINGS',
-            payload: overlaySettings.get(),
-          }),
-        );
-        // Reenviar la clasificación acumulada: un overlay que se reconecta a
-        // mitad del directo debe recuperar a los mayores contribuyentes.
-        socket.send(
-          JSON.stringify({
-            type: 'INITIAL_LEADERBOARD',
-            payload: sessionLeaderboard.getTop(),
-          }),
-        );
+        sendOverlayHandshake(socket);
       }
     },
     onModActionResult: (result) => {
       hybridAdapter?.handleModActionResult(result);
     },
   });
+
+  /**
+   * Superficie publica: solo el overlay.
+   *
+   * Es la unica que puede salir del PC (TikTok LIVE Studio necesita alcanzarla
+   * para cargar cada widget como fuente Link). Sirve los estaticos, solo las
+   * rutas de PUBLIC_READONLY_ROUTES y un WebSocket que unicamente emite. La API
+   * de gestion y el canal del mod se quedan en `wsHub`, atado a localhost.
+   */
+  const overlayHub = new WebSocketHub({
+    port: config.overlayPort,
+    host: config.overlayHost,
+    readOnly: true,
+    onHttpRequest: (req, res) => {
+      return handleApiRequest(req, res, {
+        engine,
+        ruleEvaluator,
+        goalEngine,
+        wsHub: overlayHub,
+        queue,
+        overlaySettings,
+        publicOnly: true,
+      });
+    },
+    onClientConnected: (socket) => {
+      sendOverlayHandshake(socket);
+    },
+  });
+
+  /**
+   * Emite a los overlays de las dos superficies.
+   *
+   * Sustituye a los `wsHub.broadcastToOverlay` sueltos: si un evento se mandara
+   * solo por el hub de gestion, los widgets que TikTok LIVE Studio carga desde
+   * el puerto publico se quedarian congelados.
+   */
+  const broadcastToOverlays = (type: string, payload: unknown): void => {
+    wsHub.broadcastToOverlay(type, payload);
+    overlayHub.broadcastToOverlay(type, payload);
+  };
 
   // Setup game adapters: Fabric Mod (primary via WS) -> Minecraft RCON (secondary) -> Console (fallback)
   let rcon: GameAdapter | undefined;
@@ -254,10 +290,10 @@ async function bootstrap(): Promise<void> {
           logger.info({ correlationId, ...details }, `📥 [${state}] New event received`);
           if (event) {
             recentEvents.set(event.id, event);
-            wsHub.broadcastEvent(event);
+            broadcastToOverlays('CHAOS_EVENT', event);
 
             if (sessionLeaderboard.record(event)) {
-              wsHub.broadcastToOverlay('LEADERBOARD_UPDATED', sessionLeaderboard.getTop());
+              broadcastToOverlays('LEADERBOARD_UPDATED', sessionLeaderboard.getTop());
             }
 
             // Mantener la caché acotada
@@ -268,15 +304,15 @@ async function bootstrap(): Promise<void> {
           }
           break;
         case 'GOAL_PROGRESS':
-          wsHub.broadcastToOverlay('GOAL_PROGRESS', details);
+          broadcastToOverlays('GOAL_PROGRESS', details);
           break;
         case 'GOAL_COMPLETED':
           logger.info(
             { correlationId, goalName: details?.['name'], command: action?.command },
             `🎉 [${state}] Meta completada: "${details?.['name']}"`,
           );
-          wsHub.broadcastToOverlay('GOAL_PROGRESS', details);
-          wsHub.broadcastToOverlay('GOAL_COMPLETED', details);
+          broadcastToOverlays('GOAL_PROGRESS', details);
+          broadcastToOverlays('GOAL_COMPLETED', details);
           break;
         case 'EVENT_VALIDATED':
           logger.debug({ correlationId }, `✔️  [${state}] Payload validated`);
@@ -307,7 +343,7 @@ async function bootstrap(): Promise<void> {
             { correlationId, ...details },
             `⚡ [${state}] Action dispatched to ${gameAdapter.name}`,
           );
-          wsHub.broadcastToOverlay('ACTION_DISPATCHED', {
+          broadcastToOverlays('ACTION_DISPATCHED', {
             correlationId,
             actionType: action?.actionType,
             command: action?.command,
@@ -381,6 +417,7 @@ async function bootstrap(): Promise<void> {
 
       // 3. Stop WebSocket hub and HTTP server
       await wsHub.stop();
+      await overlayHub.stop();
 
       // 4. Close database connections
       await closePrismaClient();
@@ -410,6 +447,7 @@ async function bootstrap(): Promise<void> {
 
   try {
     await wsHub.start();
+    await overlayHub.start();
     await engine.start();
     logger.info('Chaos-Live pipeline is ACTIVE and processing events.');
   } catch (err) {

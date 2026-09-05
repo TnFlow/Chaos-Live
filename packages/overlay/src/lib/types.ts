@@ -62,6 +62,8 @@ export interface PlatformStatus {
 export interface SystemStatus {
   status: string;
   uptime: number;
+  /** Base de las URLs de widget para TikTok LIVE Studio (puerto publico). */
+  overlayBaseUrl?: string;
   isPaused: boolean;
   queue: {
     size: number;

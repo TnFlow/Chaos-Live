@@ -3,6 +3,14 @@
   import { DEFAULT_OVERLAY_SETTINGS, THEME_PALETTES } from '../types/overlay-config';
   import { SOUND_PRESETS, playSound, setMasterVolume, setMuted } from '../utils/sound-engine';
   import type { OverlaySettings } from '@chaos-live/shared-protocol';
+  import {
+    WIDGET_COLUMN,
+    WIDGET_HEIGHT,
+    WIDGET_LABEL,
+    WIDGET_NAMES,
+    WIDGET_WIDTH,
+    type WidgetName,
+  } from '../overlay/minecraft/widgets';
 
   /**
    * Base de las URLs del overlay.
@@ -12,13 +20,25 @@
    */
   const overlayBase = typeof window !== 'undefined' ? window.location.origin : 'http://localhost:8080';
 
+  /**
+   * Base publica de los widgets.
+   *
+   * Llega del servidor (`/api/status`) porque el panel se sirve desde el puerto
+   * de gestion y no puede adivinar el puerto publico. Si aun no ha llegado, se
+   * cae al origen actual, que al menos da un enlace utilizable en local.
+   */
+  const widgetUrl = (name: WidgetName): string =>
+    `${overlayBaseUrl || overlayBase}/?view=overlay&theme=minecraft&widget=${name}`;
+
   let {
     overlaySettings = $bindable(),
+    overlayBaseUrl = '',
     copiedUrlType,
     saveOverlaySettings,
     copyToClipboard,
   }: {
     overlaySettings: OverlaySettings;
+    overlayBaseUrl?: string;
     copiedUrlType: string;
     saveOverlaySettings: () => void;
     copyToClipboard: (text: string, type: string) => void;
@@ -46,7 +66,11 @@
     <!-- Section 1: One-Click OBS & TikTok Live Studio URLs -->
     <div class="studio-section">
       <h3 class="section-title">📋 Enlaces para tu programa de streaming</h3>
-      <p class="section-subtitle">Copia y pega estos enlaces como fuente <em>Navegador</em> en OBS o TikTok Live Studio:</p>
+      <p class="section-subtitle">
+        En TikTok LIVE Studio, cada widget es su propia fuente <em>Link</em>: pega un enlace por
+        capa y dale a la capa el tamaño indicado. El tamaño es un máximo con margen — pasarse no
+        rompe nada, quedarse corto recorta el panel.
+      </p>
 
       <div class="url-cards-grid">
         <div class="url-card">
@@ -81,37 +105,26 @@
           </div>
         </div>
 
-        <div class="url-card">
-          <div class="url-card-header">
-            <span class="url-type-badge modular-badge">🎯 Solo la barra de meta</span>
-            <span class="res-tag">Tamaño libre</span>
+        {#each WIDGET_NAMES as name (name)}
+          {@const url = widgetUrl(name)}
+          <div class="url-card">
+            <div class="url-card-header">
+              <span class="url-type-badge modular-badge">🧩 {WIDGET_LABEL[name]}</span>
+              <span class="res-tag">
+                {WIDGET_WIDTH[WIDGET_COLUMN[name]]} x {WIDGET_HEIGHT[name]}
+              </span>
+            </div>
+            <div class="url-input-row">
+              <input type="text" readonly value={url} class="styled-input url-input" />
+              <button
+                class="action-btn btn-copy {copiedUrlType === name ? 'btn-copied' : ''}"
+                onclick={() => copyToClipboard(url, name)}
+              >
+                {copiedUrlType === name ? '✓ ¡Copiado!' : '📋 Copiar enlace'}
+              </button>
+            </div>
           </div>
-          <div class="url-input-row">
-            <input type="text" readonly value={`${overlayBase}/overlay?modular=goal`} class="styled-input url-input" />
-            <button
-              class="action-btn btn-copy {copiedUrlType === 'Goal' ? 'btn-copied' : ''}"
-              onclick={() => copyToClipboard(`${overlayBase}/overlay?modular=goal`, 'Goal')}
-            >
-              {copiedUrlType === 'Goal' ? '✓ ¡Copiado!' : '📋 Copiar enlace'}
-            </button>
-          </div>
-        </div>
-
-        <div class="url-card">
-          <div class="url-card-header">
-            <span class="url-type-badge modular-badge">⚡ Solo la marquesina de regalos</span>
-            <span class="res-tag">1920 x 80</span>
-          </div>
-          <div class="url-input-row">
-            <input type="text" readonly value={`${overlayBase}/overlay?modular=ticker`} class="styled-input url-input" />
-            <button
-              class="action-btn btn-copy {copiedUrlType === 'Ticker' ? 'btn-copied' : ''}"
-              onclick={() => copyToClipboard(`${overlayBase}/overlay?modular=ticker`, 'Ticker')}
-            >
-              {copiedUrlType === 'Ticker' ? '✓ ¡Copiado!' : '📋 Copiar enlace'}
-            </button>
-          </div>
-        </div>
+        {/each}
       </div>
     </div>
 

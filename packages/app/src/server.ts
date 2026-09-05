@@ -36,6 +36,16 @@ export interface WebSocketHubConfig {
    */
   host?: string;
   staticDir?: string;
+  /**
+   * Superficie de solo lectura, pensada para poder publicarse.
+   *
+   * Un hub normal acepta que un cliente se declare `mod` por query param y le
+   * manda por ese canal cada comando que sale hacia la partida, ademas de
+   * aceptarle `ACTION_RESULT`. Eso es el canal de control del mod y no puede
+   * salir del PC. Con `readOnly` el hub solo emite: fuerza a todo el mundo a
+   * `overlay` e ignora cuanto le llegue.
+   */
+  readOnly?: boolean;
   onClientConnected?: (socket: WebSocket, client: ConnectedClient) => void;
   onModActionResult?: (result: ModActionResult) => void;
   onHttpRequest?: (req: http.IncomingMessage, res: http.ServerResponse) => Promise<boolean> | boolean;
@@ -52,6 +62,7 @@ export class WebSocketHub {
   public readonly port: number;
   public readonly host: string;
   private readonly staticDir: string;
+  public readonly readOnly: boolean;
   private readonly onClientConnected?: (socket: WebSocket, client: ConnectedClient) => void;
   private readonly onModActionResult?: (result: ModActionResult) => void;
   private readonly onHttpRequest?: (req: http.IncomingMessage, res: http.ServerResponse) => Promise<boolean> | boolean;
@@ -63,6 +74,7 @@ export class WebSocketHub {
   constructor(config: WebSocketHubConfig) {
     this.port = config.port;
     this.host = config.host ?? '127.0.0.1';
+    this.readOnly = config.readOnly ?? false;
     this.onClientConnected = config.onClientConnected;
     this.onModActionResult = config.onModActionResult;
     this.onHttpRequest = config.onHttpRequest;
@@ -227,9 +239,12 @@ export class WebSocketHub {
     const url = new URL(request.url ?? '/', `http://localhost:${this.port}`);
     const clientTypeParam = url.searchParams.get('clientType');
 
+    // En la superficie publica el tipo no se negocia: todo el mundo es overlay.
     let initialType: ClientType = 'overlay';
-    if (clientTypeParam === 'mod') initialType = 'mod';
-    else if (clientTypeParam === 'overlay') initialType = 'overlay';
+    if (!this.readOnly) {
+      if (clientTypeParam === 'mod') initialType = 'mod';
+      else if (clientTypeParam === 'overlay') initialType = 'overlay';
+    }
 
     const clientInfo: ConnectedClient = {
       socket,
@@ -261,6 +276,9 @@ export class WebSocketHub {
     }
 
     socket.on('message', (data) => {
+      // Un hub de solo lectura no tiene nada que escuchar: ni renegociar tipo
+      // ni aceptar resultados de acciones.
+      if (this.readOnly) return;
       try {
         const msg = JSON.parse(data.toString());
         if (msg.type === 'HANDSHAKE') {

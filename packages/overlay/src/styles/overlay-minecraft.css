@@ -23,7 +23,10 @@
   pointer-events: none;
 }
 
-.mc-hud {
+/* Las variables las comparten el HUD completo y cada widget suelto: los
+   componentes Mc* las leen por herencia y no saben en cual de los dos viven. */
+.mc-hud,
+.mc-widget {
   --mc-bg-panel: rgba(15, 19, 13, 0.92);
   --mc-bg-panel-strong: rgba(15, 19, 13, 0.94);
   --mc-bg-inset: #131810;
@@ -39,7 +42,10 @@
   --mc-text-dim: #b9c4b1;
   --mc-text-mute: #8b9a83;
   --mc-text-faint: #5f6d59;
+}
 
+/* Geometria del lienzo completo, solo para la vista de conjunto. */
+.mc-hud {
   position: relative;
   width: 1080px;
   height: 1920px;
@@ -805,3 +811,34 @@
     animation-duration: 90s;
   }
 }
+
+/* ---------- Widget suelto (una fuente Link de TikTok LIVE Studio) ---------- */
+
+/*
+ * Cada widget es su propia pagina y por tanto su propia capa en TLS, donde se
+ * coloca y se redimensiona a mano. Por eso se ancla arriba a la izquierda y no
+ * centrado: lo que el streamer arrastra es la capa entera, y con el contenido
+ * centrado en un lienzo mas grande estaria arrastrando aire.
+ */
+.mc-widget-stage {
+  position: absolute;
+  top: 0;
+  left: 0;
+  pointer-events: none;
+}
+
+.mc-widget {
+  font-family: 'Outfit', system-ui, sans-serif;
+  transform: scale(var(--mc-widget-scale, 1));
+  transform-origin: top left;
+}
+
+/*
+ * El ancho de cada widget es el que ocupa dentro del diseno de 1080: el lienzo
+ * tiene 28px de margen a cada lado (1024 utiles) y las dos columnas se reparten
+ * lo que queda en 1.45 : 1 con 22px de separacion. Se conservan esos numeros
+ * para que las proporciones y los tamanos de letra sean los del diseno.
+ */
+.mc-widget--full { width: 1024px; }
+.mc-widget--main { width: 593px; }
+.mc-widget--side { width: 409px; }

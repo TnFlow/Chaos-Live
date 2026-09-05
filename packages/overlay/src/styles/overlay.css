@@ -54,28 +54,6 @@
   grid-row: 5;
 }
 
-/* Modular Views */
-.overlay-root .modular-goal-container {
-  grid-column: 1 / -1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  height: 100%;
-}
-
-.overlay-root .modular-goal-box {
-  width: 90vw;
-  max-width: 800px;
-  padding: 16px 24px;
-}
-
-.overlay-root .modular-ticker-container {
-  grid-column: 1 / -1;
-  display: flex;
-  align-items: flex-end;
-  height: 100%;
-}
-
 /* Simulation Mode Styles */
 .overlay-root.simulation-active {
   background: linear-gradient(rgba(0, 0, 0, 0.15), rgba(0, 0, 0, 0.35)),

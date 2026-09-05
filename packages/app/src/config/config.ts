@@ -23,6 +23,10 @@ export interface AppConfig {
   logLevel: string;
   wsPort: number;
   wsHost: string;
+  /** Puerto de la superficie publica: solo estaticos del overlay y GETs. */
+  overlayPort: number;
+  /** Interfaz de la superficie publica. Ver `overlayHost` en loadConfig. */
+  overlayHost: string;
   rconHost: string;
   rconPort: number;
   rconPassword?: string;
@@ -96,6 +100,13 @@ export function loadConfig(): AppConfig {
   // autenticación y todo (Chaos-Live, Minecraft y OBS) corre en el mismo PC.
   const wsHost = process.env.HOST?.trim() || '127.0.0.1';
 
+  // Superficie publica: la que TikTok LIVE Studio tiene que alcanzar para
+  // cargar cada widget como fuente Link. Sigue siendo local por defecto; se
+  // abre a la red con OVERLAY_HOST solo si hace falta, y es seguro hacerlo
+  // porque este puerto no sirve ni la API de gestion ni el canal del mod.
+  const overlayPort = Number(process.env.OVERLAY_PORT || 8081);
+  const overlayHost = process.env.OVERLAY_HOST?.trim() || '127.0.0.1';
+
   const rconHost = process.env.RCON_HOST || '127.0.0.1';
   const rconPort = Number(process.env.RCON_PORT || 25575);
   const rconPassword = process.env.RCON_PASSWORD?.trim();
@@ -107,6 +118,8 @@ export function loadConfig(): AppConfig {
     tiktokUsername,
     useMock,
     mockIntervalMs,
+    overlayPort,
+    overlayHost,
     logLevel,
     wsPort,
     wsHost,

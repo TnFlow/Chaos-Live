@@ -11,6 +11,8 @@
   import RewardsBoard from './overlay/RewardsBoard.svelte';
   import MarqueeTicker from './overlay/MarqueeTicker.svelte';
   import MinecraftHud from './overlay/minecraft/MinecraftHud.svelte';
+  import McWidget from './overlay/minecraft/McWidget.svelte';
+  import { isWidgetName, type WidgetName } from './overlay/minecraft/widgets';
   import { connectChaosSocket, type ChaosSocket } from './lib/ws-client';
   import {
     enqueueEffect,
@@ -66,7 +68,14 @@
   let recentActions = $state<ActionView[]>([]);
   let showControls = $state(false);
   let showStudioDrawer = $state(false);
-  let modularMode = $state<string>('');
+  /**
+   * Widget suelto pedido por `?widget=`.
+   *
+   * Sustituye al viejo `?modular=`, que solo cubria dos piezas y con el estilo
+   * de cristal antiguo. TikTok LIVE Studio carga cada fuente Link como una
+   * pagina propia, asi que una URL sirve exactamente un panel.
+   */
+  let widgetMode = $state<WidgetName | ''>('');
   let streamerHandle = $state('SacredNOBLEYT');
 
   /**
@@ -799,8 +808,9 @@
     if (params.get('handle')) {
       streamerHandle = (params.get('handle') || '').replace(/^@/, '') || streamerHandle;
     }
-    if (params.get('modular')) {
-      modularMode = params.get('modular') || '';
+    const widgetParam = params.get('widget');
+    if (isWidgetName(widgetParam)) {
+      widgetMode = widgetParam;
     }
     if (params.get('theme')) {
       const t = params.get('theme') as OverlayTheme;
@@ -865,7 +875,7 @@
   />
 {:else}
 <div
-  class="overlay-root layout-{overlaySettings.layout} theme-{overlaySettings.theme} {isSimulation ? 'simulation-active' : ''} {modularMode ? `modular-${modularMode}` : ''}"
+  class="overlay-root layout-{overlaySettings.layout} theme-{overlaySettings.theme} {isSimulation ? 'simulation-active' : ''} {widgetMode ? `widget-${widgetMode}` : ''}"
   id="chaos-overlay-container"
   style="
     --theme-accent-1: {currentTheme.accent1};
@@ -880,7 +890,7 @@
   "
 >
   <!-- Simulation Mode Floating Control Bar -->
-  {#if isSimulation}
+  {#if isSimulation && !widgetMode}
     <div class="sim-floating-bar glass-panel" id="simulation-bar">
       <div class="sim-title">
         <span class="sim-dot">🔴</span>
@@ -931,59 +941,23 @@
     </div>
   {/if}
 
-  <!-- Modular Mode: Goal Only -->
-  {#if modularMode === 'goal'}
-    <div class="modular-goal-container">
-      {#if goals.length > 0}
-        {@const activeGoal = goals[0]}
-        <div class="goal-widget modular-goal-box glass-panel">
-          <div class="goal-label-row">
-            <span class="goal-name">{activeGoal?.name}</span>
-            <span class="goal-counts">
-              <strong>{activeGoal?.currentValue}</strong> / {activeGoal?.targetValue}
-              <span class="goal-percent">({activeGoal?.percent}%)</span>
-            </span>
-          </div>
-          <div class="goal-track">
-            <div class="goal-fill" style="width: {activeGoal?.percent}%;">
-              <div class="goal-shimmer"></div>
-            </div>
-          </div>
-        </div>
-      {/if}
-    </div>
-  <!-- Modular Mode: Ticker Only -->
-  {:else if modularMode === 'ticker'}
-    <div class="modular-ticker-container">
-      <div class="rewards-marquee-ticker glass-panel">
-        <div class="marquee-badge">
-          <span class="badge-icon">🎁</span>
-          <span>REGALOS Y EFECTOS</span>
-        </div>
-        <div class="marquee-wrapper">
-          <div class="marquee-track">
-            {#each activeRewards as r (r.id + '-mod1')}
-              <div class="marquee-item" style="--item-color: {r.color}">
-                <span class="item-icon">{r.icon}</span>
-                <span class="item-name">{r.giftName}</span>
-                <span class="item-cost">({r.cost} 💎)</span>
-                <span class="item-arrow">➔</span>
-                <span class="item-reward">{r.rewardText}</span>
-              </div>
-            {/each}
-            {#each activeRewards as r (r.id + '-mod2')}
-              <div class="marquee-item" style="--item-color: {r.color}">
-                <span class="item-icon">{r.icon}</span>
-                <span class="item-name">{r.giftName}</span>
-                <span class="item-cost">({r.cost} 💎)</span>
-                <span class="item-arrow">➔</span>
-                <span class="item-reward">{r.rewardText}</span>
-              </div>
-            {/each}
-          </div>
-        </div>
-      </div>
-    </div>
+  <!-- Un widget suelto: una fuente Link de TikTok LIVE Studio por panel -->
+  {#if widgetMode}
+    <McWidget
+      name={widgetMode}
+      settings={overlaySettings}
+      {isConnected}
+      eventCount={totalEventsReceived}
+      handle={streamerHandle}
+      {goals}
+      rewards={activeRewards}
+      cooldowns={rewardCooldowns}
+      queue={effectQueue}
+      {leaderboard}
+      {recentActions}
+      {activeAlert}
+      {celebratingGoal}
+    />
   <!-- HUD pixel: el tema `minecraft` trae su propio overlay vertical completo -->
   {:else if useMinecraftHud}
     <MinecraftHud
@@ -1179,6 +1153,8 @@
   {/if}
 
   <!-- Floating Test Controls Toggle -->
+  <!-- Un widget es una capa de emision: no lleva mandos encima. -->
+  {#if !widgetMode}
   <div class="preview-controls-toggle">
     <button
       class="toggle-btn"
@@ -1188,8 +1164,9 @@
       ⚙️
     </button>
   </div>
+  {/if}
 
-  {#if showControls}
+  {#if showControls && !widgetMode}
     <div class="preview-controls-panel glass-panel" id="preview-controls">
       <h4>Pruebas del overlay</h4>
       <div class="control-buttons">

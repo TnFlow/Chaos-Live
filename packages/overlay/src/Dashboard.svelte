@@ -631,6 +631,7 @@
     {#if activeTab === 'overlay-studio'}
       <OverlayStudioTab
         bind:overlaySettings
+        overlayBaseUrl={status?.overlayBaseUrl ?? ''}
         {copiedUrlType}
         {saveOverlaySettings}
         {copyToClipboard}

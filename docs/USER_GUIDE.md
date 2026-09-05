@@ -36,7 +36,7 @@ Chaos-Live sits between your live streaming platform and your game:
                  ├──➜ [Chaos-Live Middleware] ──➜ [Fabric Mod (Primary WS)] ──➜ [Minecraft]
 [Twitch Stream] ──┘    │  (Rules • Queue • Goals)   └──➜ [RCON (Fallback)]
                        │
-                       └──➜ [OBS Browser Source HUD] & [Web Dashboard]
+                       └──➜ [TikTok LIVE Studio widgets] & [Web Dashboard]
 ```
 
 - **Core Middleware (`@chaos-live/app`):** Runs on port `8080`. Manages the priority queue with anti-starvation aging, evaluates rules, tracks community goals in SQLite, and serves the web HUD and REST API.
@@ -75,7 +75,7 @@ USE_MOCK=true MOCK_INTERVAL_MS=3000 WS_PORT=8080 npm run dev
 ```
 Open your browser at:
 - **Streamer Control Center:** `http://localhost:8080/dashboard`
-- **OBS Browser Overlay:** `http://localhost:8080/overlay`
+- **Widgets del overlay (TikTok LIVE Studio):** `http://localhost:8081/?view=overlay&theme=minecraft&widget=<nombre>` — la lista completa, con tamaños, en la pestaña Overlay Studio del panel.
 
 ---
 
@@ -141,20 +141,64 @@ Set `USE_MOCK=true` in `.env`. The mock adapter generates randomized, realistic 
 
 ---
 
-## 5. OBS Studio Integration
+## 5. TikTok LIVE Studio Integration
 
-1. In **OBS Studio**, add a new **Browser Source** to your scene:
-   - **URL:** `http://localhost:8080/overlay` (or `http://localhost:8080/` which defaults to the overlay)
-   - **Width:** `1920`
-   - **Height:** `1080`
-   - **Custom CSS:** Leave blank (the background is fully transparent)
-   - **Shutdown source when not visible:** Unchecked (keeps WebSocket connection alive)
-2. What your viewers will see:
-   - **Top Status Bar:** Connection indicator, live event counter, and community goal progress bar.
-   - **Left HUD:** Live interaction feed with glassmorphic cards for gifts, likes, and followers.
-   - **Center Screen:** Grand animated alerts when major gifts are received (e.g. Lions, Ice Creams, Bits cheers) showing who sent the gift and what in-game punishment was triggered.
-   - **Right HUD:** Top supporters leaderboard ranked by total contributions.
-   - **Bottom HUD:** Game execution ticker displaying the exact Minecraft commands running live.
+TikTok LIVE Studio has **no Browser Source**. It has a **Link** source, and the established
+pattern across the TikTok overlay ecosystem is **one URL per widget**, stacked as separate
+layers. Chaos-Live serves each panel of the HUD as its own page for exactly that reason.
+
+### 5.1 Two ports, and why
+
+Chaos-Live listens on two ports:
+
+| Port | What it serves | Exposure |
+|---|---|---|
+| `WS_PORT` (8080) | Dashboard, full management API, Fabric mod channel | **Never leaves the PC** |
+| `OVERLAY_PORT` (8081) | Overlay widgets + a handful of read-only GETs | The one you may expose |
+
+The split is a safety boundary, not tidiness. The management API has **no authentication**:
+anything that reaches it can rewrite your rules and run commands in your world mid-stream. The
+overlay port serves no write route and its WebSocket only broadcasts, so it is the only surface
+that is safe to reach from outside.
+
+### 5.2 Adding the widgets
+
+Open the dashboard's **Overlay Studio** tab: it lists all eight URLs with their layer size and a
+copy button. For each one, in LIVE Studio add a **Link** source, paste the URL, and set the layer
+to the size shown.
+
+| Widget | URL suffix | Layer size |
+|---|---|---|
+| Status bar | `&widget=status` | 1024 × 70 |
+| Active goal | `&widget=goal` | 1024 × 250 |
+| Secondary goal | `&widget=goal2` | 1024 × 100 |
+| Gifts → events | `&widget=rewards` | 593 × 570 |
+| Top supporters | `&widget=leaderboard` | 409 × 350 |
+| Effect queue | `&widget=queue` | 409 × 300 |
+| Alerts | `&widget=alert` | 1024 × 280 |
+| Ticker | `&widget=ticker` | 1024 × 80 |
+
+Full form of a URL: `http://127.0.0.1:8081/?view=overlay&theme=minecraft&widget=goal`
+
+Sizes are **maximums with headroom**, measured in a browser with each panel full. Oversizing a
+layer costs nothing — the page is transparent and the widget anchors top-left — but a short layer
+crops the panel. The gifts menu, for instance, grows from 431 to 546 px when its carousel page
+carries four rows instead of three.
+
+The panels paint their own opaque background, so a widget still reads correctly even if LIVE
+Studio does not honour page transparency.
+
+### 5.3 If LIVE Studio will not load a local URL
+
+Try the LAN address instead (`http://<your-LAN-IP>:8081/...`) after setting `OVERLAY_HOST=0.0.0.0`.
+Only the overlay port should ever be opened this way; leave `HOST` at `127.0.0.1` so the management
+API and the mod channel stay on the machine.
+
+### 5.4 Full-screen preview
+
+`http://127.0.0.1:8081/?view=overlay&theme=minecraft` (no `widget=`) still renders the whole HUD on
+one 1080×1920 canvas. It is useful for checking the design as a whole, and works as a single OBS
+Browser Source.
 
 ---
 
