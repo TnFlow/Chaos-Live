@@ -417,12 +417,23 @@
     } catch {}
   }
 
+  /**
+   * Ajustes forzados por la URL de la fuente de OBS.
+   *
+   * Se guardan aparte porque los ajustes del servidor llegan por fetch, es
+   * decir despues de leer la URL: sin esto, abrir la fuente con
+   * `?theme=minecraft` mostraba el HUD un instante y el tema guardado lo
+   * pisaba al resolverse la peticion. Lo que pone el streamer en la URL manda
+   * sobre lo persistido, que es lo que significa poner un parametro ahi.
+   */
+  let urlSettingsOverrides: Partial<OverlayCustomSettings> = {};
+
   async function fetchOverlaySettings() {
     try {
       const res = await fetch('/api/overlay-settings');
       if (res.ok) {
         const data = await res.json();
-        overlaySettings = { ...DEFAULT_OVERLAY_SETTINGS, ...data };
+        overlaySettings = { ...DEFAULT_OVERLAY_SETTINGS, ...data, ...urlSettingsOverrides };
         rewardsDisplayMode = overlaySettings.rewardsMode || 'both';
         setMasterVolume(overlaySettings.masterVolume);
         setMuted(!overlaySettings.soundEnabled);
@@ -451,7 +462,11 @@
       }
     } else if (packet.type === 'INITIAL_OVERLAY_SETTINGS' || packet.type === 'OVERLAY_SETTINGS_UPDATED') {
       if (packet.payload) {
-        overlaySettings = { ...overlaySettings, ...packet.payload };
+        // Los overrides de la URL se reaplican tambien aqui: el hub manda los
+        // ajustes guardados en el handshake y cada vez que alguien los cambia
+        // desde el panel, y sin esto cualquiera de esos envios devolvia la
+        // fuente de OBS al tema persistido.
+        overlaySettings = { ...overlaySettings, ...packet.payload, ...urlSettingsOverrides };
         rewardsDisplayMode = overlaySettings.rewardsMode || 'both';
         setMasterVolume(overlaySettings.masterVolume);
         setMuted(!overlaySettings.soundEnabled);
@@ -765,9 +780,8 @@
   }
 
   onMount(() => {
-    void fetchRules();
-    void fetchOverlaySettings();
-
+    // La URL se lee ANTES de pedir los ajustes al servidor, para que
+    // `urlSettingsOverrides` ya este completo cuando la respuesta llegue.
     const params = new URLSearchParams(window.location.search);
     if (params.get('preview') === '1') {
       showControls = true;
@@ -779,7 +793,7 @@
     if (params.get('layout')) {
       const l = params.get('layout') as OverlayLayout;
       if (['landscape', 'vertical', 'compact', 'modular'].includes(l)) {
-        overlaySettings.layout = l;
+        urlSettingsOverrides.layout = l;
       }
     }
     if (params.get('handle')) {
@@ -791,31 +805,35 @@
     if (params.get('theme')) {
       const t = params.get('theme') as OverlayTheme;
       if (THEME_PALETTES[t]) {
-        overlaySettings.theme = t;
+        urlSettingsOverrides.theme = t;
       }
     }
     if (params.get('scale')) {
       const s = parseFloat(params.get('scale') || '1');
-      if (!isNaN(s)) overlaySettings.scale = s;
+      if (!isNaN(s)) urlSettingsOverrides.scale = s;
     }
     if (params.get('volume')) {
       const v = parseFloat(params.get('volume') || '0.8');
       if (!isNaN(v)) {
-        overlaySettings.masterVolume = v;
+        urlSettingsOverrides.masterVolume = v;
         setMasterVolume(v);
       }
     }
     if (params.get('muted') === '1') {
-      overlaySettings.soundEnabled = false;
+      urlSettingsOverrides.soundEnabled = false;
       setMuted(true);
     }
     if (params.get('rewards')) {
       const r = params.get('rewards') as any;
       if (['both', 'ticker', 'menu', 'off'].includes(r)) {
         rewardsDisplayMode = r;
-        overlaySettings.rewardsMode = r;
+        urlSettingsOverrides.rewardsMode = r;
       }
     }
+    overlaySettings = { ...overlaySettings, ...urlSettingsOverrides };
+
+    void fetchRules();
+    void fetchOverlaySettings();
 
     // La reconexion la gestiona el cliente compartido con el panel.
     const socket: ChaosSocket = connectChaosSocket({
