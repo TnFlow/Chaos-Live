@@ -2,6 +2,8 @@
 const config = {
   displayName: 'app',
   testEnvironment: 'node',
+  // Aisla la base de datos de este worker (ver jest.setup.js en la raiz).
+  setupFiles: ['<rootDir>/../../jest.setup.js'],
   transform: {
     '^.+\\.ts$': ['ts-jest', { useESM: true }],
   },

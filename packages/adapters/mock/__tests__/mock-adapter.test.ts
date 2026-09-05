@@ -1,6 +1,23 @@
 import type { ChaosEvent } from '@chaos-live/shared-protocol';
 import { MockAdapter } from '../src/MockAdapter.js';
 
+/**
+ * Espera a que se cumpla una condicion, sondeandola.
+ *
+ * Los tests de flujo automatico dormian un tiempo fijo calculado sobre el
+ * intervalo del adaptador. Con los workers de jest en paralelo los timers se
+ * retrasan, asi que esa espera se quedaba corta de vez en cuando y la suite
+ * fallaba sin que nada estuviera roto. Sondear mantiene el test rapido cuando
+ * la maquina va suelta y le da margen cuando va cargada.
+ */
+async function waitFor(condition: () => boolean, timeoutMs = 3000): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (!condition()) {
+    if (Date.now() > deadline) throw new Error('La condicion no se cumplio a tiempo');
+    await new Promise((r) => setTimeout(r, 5));
+  }
+}
+
 describe('MockAdapter', () => {
   it('connects and disconnects cleanly', async () => {
     const adapter = new MockAdapter();
@@ -67,7 +84,7 @@ describe('MockAdapter', () => {
     const received: ChaosEvent[] = [];
     adapter.onEvent((event) => received.push(event));
 
-    await new Promise((r) => setTimeout(r, 65));
+    await waitFor(() => received.length >= 2);
     expect(received.length).toBeGreaterThanOrEqual(2);
 
     await adapter.disconnect();

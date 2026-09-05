@@ -1,6 +1,7 @@
 import http from 'node:http';
 import { EventEngine, InMemoryPriorityQueue, RuleEvaluator, GoalEngine } from '@chaos-live/core';
 import type { RuleDefinition } from '@chaos-live/core';
+import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { DEFAULT_OVERLAY_SETTINGS } from '@chaos-live/shared-protocol';
@@ -10,7 +11,11 @@ import { handleApiRequest } from '../src/api/router.js';
 import type { OverlaySettingsStore } from '../src/api/router.js';
 
 describe('REST Management API', () => {
-  const testPort = 9878;
+  // Un puerto por worker de jest. Con uno fijo, esta suite chocaba con
+  // cualquier otra tanda en paralelo y con un socket que aun no habia soltado
+  // el sistema, y fallaba con EADDRINUSE de forma intermitente. Dentro de un
+  // worker los tests van en serie, asi que basta con distinguir workers.
+  const testPort = 9878 + Number(process.env.JEST_WORKER_ID || '1');
   let hub: WebSocketHub;
   let engine: EventEngine;
   let ruleEvaluator: RuleEvaluator;
@@ -22,7 +27,12 @@ describe('REST Management API', () => {
   // Los tests guardan reglas en disco. Antes escribian en `config/test-rules.json`,
   // que esta versionado, asi que cada ejecucion dejaba el arbol sucio y hacia
   // fallar el `git diff --exit-code` de CI. Se usa un fichero temporal del sistema.
-  const testRulesPath = path.join(os.tmpdir(), 'chaos-live-test-rules.json');
+  //
+  // El directorio es unico por ejecucion: con un nombre fijo, dos workers de
+  // jest a la vez escribian y leian el mismo fichero y la suite fallaba de
+  // forma intermitente.
+  const testRulesDir = fs.mkdtempSync(path.join(os.tmpdir(), 'chaos-live-rules-'));
+  const testRulesPath = path.join(testRulesDir, 'rules.json');
   let currentOnInject: ((e: any) => void) | undefined = undefined;
 
   beforeEach(async () => {
@@ -81,6 +91,10 @@ describe('REST Management API', () => {
 
   afterEach(async () => {
     await hub.stop();
+  });
+
+  afterAll(() => {
+    fs.rmSync(testRulesDir, { recursive: true, force: true });
   });
 
   it('GET /api/status returns current system status', async () => {
