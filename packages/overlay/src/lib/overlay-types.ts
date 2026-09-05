@@ -72,6 +72,10 @@ export interface RewardView {
   icon: string;
   imageUrl?: string;
   color: string;
+  /** Comando que ejecuta la regla, para etiquetar el item en el HUD pixel. */
+  command?: string;
+  /** Tipo de evento que la dispara (`gift`, `like`, ...). */
+  eventType?: string;
 }
 
 /** Una regla, tal y como la recibe el overlay para construir el menú. */

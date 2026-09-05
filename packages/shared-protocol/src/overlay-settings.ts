@@ -13,7 +13,8 @@ export type OverlayTheme =
   | 'streamtoearn'
   | 'obsidian'
   | 'tiktok-rose'
-  | 'amber-sunset';
+  | 'amber-sunset'
+  | 'minecraft';
 export type RewardsDisplayMode = 'both' | 'ticker' | 'menu' | 'off';
 export type WidgetPosition = 'top' | 'bottom' | 'left' | 'right' | 'hidden';
 

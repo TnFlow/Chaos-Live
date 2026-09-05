@@ -2,6 +2,7 @@
   import { onMount } from 'svelte';
   import Dashboard from './Dashboard.svelte';
   import './styles/overlay.css';
+  import './styles/overlay-minecraft.css';
   import GoalBar from './overlay/GoalBar.svelte';
   import EventFeed from './overlay/EventFeed.svelte';
   import AlertBanner from './overlay/AlertBanner.svelte';
@@ -9,7 +10,15 @@
   import Leaderboard from './overlay/Leaderboard.svelte';
   import RewardsBoard from './overlay/RewardsBoard.svelte';
   import MarqueeTicker from './overlay/MarqueeTicker.svelte';
+  import MinecraftHud from './overlay/minecraft/MinecraftHud.svelte';
   import { connectChaosSocket, type ChaosSocket } from './lib/ws-client';
+  import {
+    enqueueEffect,
+    markEffectRunning,
+    matchesCommandTemplate,
+    pruneEffects,
+    type QueuedEffect,
+  } from './lib/mc-live-state';
   import type {
     ActionView,
     AlertView,
@@ -58,6 +67,25 @@
   let showControls = $state(false);
   let showStudioDrawer = $state(false);
   let modularMode = $state<string>('');
+  let streamerHandle = $state('SacredNOBLEYT');
+
+  /**
+   * Cola de efectos y cooldowns del HUD pixel.
+   *
+   * No llegan del servidor: se reconstruyen a partir de `CHAOS_EVENT` (la
+   * audiencia pagó) y `ACTION_DISPATCHED` (el comando salió). Ver
+   * `lib/mc-live-state.ts`.
+   */
+  let effectQueue = $state<QueuedEffect[]>([]);
+  let rewardCooldowns = $state<Record<string, number>>({});
+
+  /**
+   * La cola se limpia sola en un único reloj, en vez de con un temporizador
+   * por efecto: un `running` se retira cuando se ha visto ya en la partida, y
+   * un `pending` cuando lleva demasiado esperando un despacho que puede no
+   * llegar nunca. Ver `lib/mc-live-state.ts`.
+   */
+  const QUEUE_PRUNE_INTERVAL_MS = 1000;
 
   // Overlay Customization Settings
   let overlaySettings = $state<OverlayCustomSettings>({ ...DEFAULT_OVERLAY_SETTINGS });
@@ -66,6 +94,13 @@
   let currentTheme = $derived(
     THEME_PALETTES[overlaySettings.theme] || THEME_PALETTES.cyberpunk
   );
+
+  /**
+   * El tema `minecraft` no es una paleta más: trae su propio HUD vertical, que
+   * sustituye entero al overlay de cristal. Se elige por tema y no por layout
+   * para que la orientación siga significando lo mismo en el resto de temas.
+   */
+  let useMinecraftHud = $derived(overlaySettings.theme === 'minecraft');
 
   // Stream Simulation State
   let isSimulation = $state(false);
@@ -322,6 +357,7 @@
           giftName,
           cost,
           rewardText,
+          command: r.action?.command,
           color: r.viewerFeedback?.bannerColor || currentTheme.accent1,
           soundEffect: r.viewerFeedback?.soundEffect,
           eventType: (r.matcher?.eventTypes && r.matcher.eventTypes[0]) || 'gift',
@@ -501,6 +537,18 @@
             color: accentColor,
           });
 
+          // El regalo ya está pagado pero el comando aún no ha salido: entra en
+          // la cola y sale de ella cuando llegue su ACTION_DISPATCHED.
+          const queuedReward = activeRewards.find((reward) => reward.giftName === giftName);
+          effectQueue = enqueueEffect(effectQueue, {
+            id: event.id,
+            emoji: queuedReward?.icon || '🎁',
+            label: queuedReward ? `${queuedReward.rewardText} · ${giftName}` : giftName,
+            rewardId: queuedReward?.id,
+            status: 'pending',
+            queuedAt: Date.now(),
+          });
+
           break;
         }
         case 'like': {
@@ -561,9 +609,29 @@
       events = [item, ...events.slice(0, 7)];
     } else if (packet.type === 'ACTION_DISPATCHED') {
       const action = packet.payload;
+      const correlationId = action.correlationId || String(Date.now());
+
+      // La regla que disparó marca el cooldown de su tarjeta. Si el evento se
+      // perdió (recarga de la fuente a mitad de racha) se busca por comando,
+      // contra la plantilla de la regla y no contra su texto literal: lo que
+      // llega aquí ya viene interpolado.
+      const queuedEffect = effectQueue.find((q) => q.id === correlationId);
+      const firedRewardId =
+        queuedEffect?.rewardId ??
+        rules.find((r) => matchesCommandTemplate(r.action?.command, action.command))?.id;
+      if (firedRewardId) {
+        rewardCooldowns = { ...rewardCooldowns, [firedRewardId]: Date.now() };
+      }
+
+      effectQueue = markEffectRunning(effectQueue, correlationId, {
+        emoji: action.icon || '⚡',
+        label: action.viewerFeedback?.title || `/${action.command || 'comando'}`,
+        rewardId: firedRewardId,
+        queuedAt: Date.now(),
+      });
       recentActions = [
         {
-          id: action.correlationId || String(Date.now()),
+          id: correlationId,
           actionType: action.actionType || 'command',
           command: action.command || '',
           timestamp: Date.now(),
@@ -714,6 +782,9 @@
         overlaySettings.layout = l;
       }
     }
+    if (params.get('handle')) {
+      streamerHandle = (params.get('handle') || '').replace(/^@/, '') || streamerHandle;
+    }
     if (params.get('modular')) {
       modularMode = params.get('modular') || '';
     }
@@ -755,8 +826,13 @@
       onPacket: handleIncomingPacket,
     });
 
+    const queuePrune = setInterval(() => {
+      effectQueue = pruneEffects(effectQueue, Date.now());
+    }, QUEUE_PRUNE_INTERVAL_MS);
+
     return () => {
       if (simInterval) clearInterval(simInterval);
+      clearInterval(queuePrune);
       socket.close();
     };
   });
@@ -833,7 +909,7 @@
     <div class="viewer-count-pill glass-panel">
       <span class="live-dot-pulse">🔴</span>
       <span class="viewer-text">1.8K Viewers</span>
-      <span class="streamer-handle">@SacredNOBLEYT</span>
+      <span class="streamer-handle">@{streamerHandle}</span>
     </div>
   {/if}
 
@@ -890,6 +966,23 @@
         </div>
       </div>
     </div>
+  <!-- HUD pixel: el tema `minecraft` trae su propio overlay vertical completo -->
+  {:else if useMinecraftHud}
+    <MinecraftHud
+      settings={overlaySettings}
+      {isConnected}
+      eventCount={totalEventsReceived}
+      handle={streamerHandle}
+      {goals}
+      rewards={activeRewards}
+      cooldowns={rewardCooldowns}
+      queue={effectQueue}
+      {leaderboard}
+      {recentActions}
+      {activeAlert}
+      {celebratingGoal}
+      showGuides={showControls}
+    />
   <!-- Standard Full Overlay / Vertical TikTok Live Studio Overlay -->
   {:else}
     <!-- Top Header Status Bar -->
@@ -1091,6 +1184,10 @@
         <button class="mode-test-btn" onclick={toggleRewardsMode}>
           🎁 Vista: {rewardsDisplayMode.toUpperCase()}
         </button>
+        <!-- El HUD pixel oculta la cabecera, así que el cajón de ajustes solo
+             se puede abrir desde aquí: sin esto no habría forma de volver a
+             cambiar de tema sin pasar por el panel. -->
+        <button onclick={() => (showStudioDrawer = !showStudioDrawer)}>🎨 Ajustes del overlay</button>
       </div>
     </div>
   {/if}

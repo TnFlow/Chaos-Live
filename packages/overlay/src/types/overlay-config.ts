@@ -49,6 +49,14 @@ export const THEME_PALETTES = {
     bgGlass: 'rgba(20, 10, 18, 0.85)',
     borderGlow: 'rgba(254, 44, 85, 0.35)',
   },
+  minecraft: {
+    name: '⛏️ Minecraft Pixel',
+    accent1: '#8fd694',
+    accent2: '#f0b232',
+    accent3: '#58c0d0',
+    bgGlass: 'rgba(15, 19, 13, 0.93)',
+    borderGlow: 'rgba(42, 51, 38, 1)',
+  },
   'amber-sunset': {
     name: '🔥 Amber Sunset',
     accent1: '#f59e0b',

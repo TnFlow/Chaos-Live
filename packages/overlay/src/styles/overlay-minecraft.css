@@ -1,0 +1,807 @@
+/**
+ * HUD pixel para el layout vertical (tema `minecraft`).
+ *
+ * Es el diseño "Stack HUD" del canvas de Claude Design: todo apilado en la
+ * mitad superior de un lienzo 1080x1920, dejando el centro para el gameplay y
+ * el pie para los comentarios de TikTok.
+ *
+ * Dos reglas que rigen todo el archivo:
+ *  - Nada de redondeos ni desenfoques. El relieve se hace con `box-shadow`
+ *    `inset` (luz arriba, sombra abajo) y un borde sólido exterior, que es lo
+ *    que da el aire de bloque de Minecraft.
+ *  - El lienzo es transparente. Las franjas y los recuadros punteados del
+ *    diseño original solo existen en la vista previa (`.mc-hud--guides`),
+ *    porque en OBS debajo va la partida.
+ */
+
+.mc-stage {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.mc-hud {
+  --mc-bg-panel: rgba(15, 19, 13, 0.92);
+  --mc-bg-panel-strong: rgba(15, 19, 13, 0.94);
+  --mc-bg-inset: #131810;
+  --mc-bg-track: #0d110b;
+  --mc-border: #2a3326;
+  --mc-green: #8fd694;
+  --mc-amber: #f0b232;
+  --mc-red: #f0526a;
+  --mc-cyan: #58c0d0;
+  --mc-cyan-bright: #4fdbd0;
+  --mc-text: #f7f4ea;
+  --mc-text-soft: #cbd5c4;
+  --mc-text-dim: #b9c4b1;
+  --mc-text-mute: #8b9a83;
+  --mc-text-faint: #5f6d59;
+
+  position: relative;
+  width: 1080px;
+  height: 1920px;
+  flex: 0 0 auto;
+  overflow: hidden;
+  font-family: 'Outfit', system-ui, sans-serif;
+  transform: scale(var(--mc-fit, 1));
+  transform-origin: center center;
+}
+
+/* Franjas del artboard: solo para revisar el diseño fuera de OBS. */
+.mc-hud--guides {
+  background: repeating-linear-gradient(135deg, #14180f 0 22px, #171c12 22px 44px);
+  box-shadow: 0 0 0 4px var(--mc-border);
+}
+
+.mc-hud__inner {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: 28px;
+}
+
+/* ---------- Primitivas ---------- */
+
+.mc-mono {
+  font-family: 'Silkscreen', 'Courier New', monospace;
+}
+
+.mc-panel {
+  background: var(--mc-bg-panel);
+  box-shadow:
+    inset 0 4px 0 rgba(255, 255, 255, 0.1),
+    inset 0 -4px 0 rgba(0, 0, 0, 0.5),
+    0 0 0 4px var(--mc-border);
+}
+
+.mc-panel--strong {
+  background: var(--mc-bg-panel-strong);
+  box-shadow:
+    inset 0 5px 0 rgba(255, 255, 255, 0.1),
+    inset 0 -5px 0 rgba(0, 0, 0, 0.55),
+    0 0 0 4px var(--mc-border);
+}
+
+.mc-row {
+  background: var(--mc-bg-inset);
+  box-shadow:
+    inset 0 3px 0 rgba(255, 255, 255, 0.06),
+    inset 0 -3px 0 rgba(0, 0, 0, 0.45);
+}
+
+/* Casilla de inventario: el cuadro texturado que enmarca iconos e items. */
+.mc-slot {
+  position: relative;
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  background: repeating-linear-gradient(45deg, #20281c 0 6px, #28311f 6px 12px);
+  box-shadow:
+    inset 0 3px 0 rgba(255, 255, 255, 0.1),
+    inset 0 -3px 0 rgba(0, 0, 0, 0.5);
+}
+
+.mc-slot--dark {
+  background: repeating-linear-gradient(135deg, #1d2418 0 5px, #232b1d 5px 10px);
+  box-shadow:
+    inset 0 3px 0 rgba(255, 255, 255, 0.08),
+    inset 0 -3px 0 rgba(0, 0, 0, 0.5);
+}
+
+.mc-slot--goal {
+  background: repeating-linear-gradient(45deg, #2a3326 0 6px, #333f2d 6px 12px);
+  box-shadow:
+    inset 0 3px 0 rgba(255, 255, 255, 0.12),
+    inset 0 -3px 0 rgba(0, 0, 0, 0.5);
+}
+
+.mc-tag {
+  flex: 0 0 auto;
+  background: var(--mc-green);
+  color: #0b0d0a;
+  padding: 6px 10px;
+  font-size: 19px;
+}
+
+.mc-truncate {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ---------- Barra de estado ---------- */
+
+.mc-status {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.mc-status__live {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 18px;
+}
+
+.mc-status__dot {
+  width: 16px;
+  height: 16px;
+  background: var(--mc-red);
+  box-shadow: 0 0 14px var(--mc-red);
+  animation: mc-blink 1.4s steps(2, end) infinite;
+}
+
+.mc-status__dot--off {
+  background: var(--mc-text-faint);
+  box-shadow: none;
+  animation: none;
+}
+
+.mc-status__label {
+  font-size: 22px;
+  color: var(--mc-text);
+  letter-spacing: 0.04em;
+}
+
+.mc-status__count {
+  font-size: 22px;
+  color: var(--mc-text-mute);
+}
+
+.mc-status__spacer {
+  flex: 1;
+}
+
+.mc-status__handle {
+  padding: 12px 18px;
+  font-size: 22px;
+  color: var(--mc-amber);
+}
+
+/* ---------- Meta principal ---------- */
+
+.mc-goal {
+  padding: 24px 26px 26px;
+}
+
+.mc-goal__head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 20px;
+  margin-bottom: 16px;
+}
+
+.mc-goal__ident {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  min-width: 0;
+}
+
+.mc-goal__emoji {
+  width: 64px;
+  height: 64px;
+  font-size: 34px;
+}
+
+.mc-goal__kicker {
+  font-size: 20px;
+  color: var(--mc-green);
+  letter-spacing: 0.08em;
+  margin-bottom: 6px;
+}
+
+.mc-goal__name {
+  font-size: 36px;
+  font-weight: 800;
+  color: var(--mc-text);
+  line-height: 1.05;
+  text-wrap: pretty;
+}
+
+.mc-goal__figures {
+  text-align: right;
+  flex: 0 0 auto;
+}
+
+.mc-goal__pct {
+  font-size: 40px;
+  color: var(--mc-amber);
+  line-height: 1;
+}
+
+.mc-goal__counts {
+  font-size: 22px;
+  color: var(--mc-text-mute);
+  margin-top: 6px;
+}
+
+.mc-track {
+  position: relative;
+  height: 46px;
+  background: var(--mc-bg-track);
+  box-shadow:
+    inset 0 4px 0 rgba(0, 0, 0, 0.6),
+    0 0 0 4px var(--mc-border);
+}
+
+.mc-track__fill {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, #8fd694, #4f9c5b 55%, #3d7d48);
+  box-shadow:
+    inset 0 4px 0 rgba(255, 255, 255, 0.28),
+    inset 0 -4px 0 rgba(0, 0, 0, 0.35);
+  transition: width 0.4s ease-out;
+}
+
+/* Muescas verticales: convierten la barra continua en bloques. */
+.mc-track__notches {
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(90deg, transparent 0 62px, rgba(0, 0, 0, 0.55) 62px 66px);
+}
+
+.mc-goal__foot {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.mc-goal__foot-label {
+  font-size: 19px;
+  color: var(--mc-text-faint);
+}
+
+.mc-goal__reward {
+  font-size: 24px;
+  font-weight: 700;
+  color: #e7dfc9;
+}
+
+/* ---------- Meta secundaria ---------- */
+
+.mc-goal2 {
+  padding: 14px 18px;
+}
+
+.mc-goal2__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 10px;
+}
+
+.mc-goal2__name {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--mc-text-soft);
+}
+
+.mc-goal2__counts {
+  font-size: 20px;
+  color: var(--mc-cyan);
+  flex: 0 0 auto;
+}
+
+.mc-track--slim {
+  height: 18px;
+  box-shadow: inset 0 3px 0 rgba(0, 0, 0, 0.6);
+}
+
+.mc-track__fill--cyan {
+  background: linear-gradient(180deg, #7fd6e4, #3f97a8);
+  box-shadow: inset 0 3px 0 rgba(255, 255, 255, 0.25);
+}
+
+/* ---------- Columnas centrales ---------- */
+
+.mc-columns {
+  display: flex;
+  gap: 22px;
+  align-items: stretch;
+}
+
+.mc-columns__main {
+  flex: 1.45;
+  min-width: 0;
+}
+
+.mc-columns__side {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+}
+
+.mc-card {
+  padding: 22px;
+}
+
+.mc-card--tight {
+  padding: 20px;
+}
+
+.mc-card__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.mc-card__title {
+  font-size: 22px;
+  letter-spacing: 0.06em;
+  color: var(--mc-amber);
+}
+
+.mc-card__title--cyan {
+  color: var(--mc-cyan);
+}
+
+.mc-card__meta {
+  font-size: 18px;
+  color: var(--mc-text-faint);
+}
+
+.mc-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.mc-list--tight {
+  gap: 8px;
+}
+
+/* ---------- Menú de regalos ---------- */
+
+.mc-reward {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 10px 14px;
+  animation: mc-pop-in 0.32s ease-out;
+}
+
+.mc-reward__slot {
+  width: 66px;
+  height: 66px;
+}
+
+.mc-reward__emoji {
+  font-size: 42px;
+}
+
+.mc-reward__img {
+  width: 52px;
+  height: 52px;
+  object-fit: contain;
+  image-rendering: pixelated;
+}
+
+.mc-reward__slot-note {
+  position: absolute;
+  bottom: 2px;
+  right: 3px;
+  font-size: 11px;
+  color: #6e7d66;
+}
+
+.mc-reward__body {
+  min-width: 0;
+  flex: 1;
+}
+
+.mc-reward__top {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+
+.mc-reward__name {
+  font-size: 27px;
+  font-weight: 800;
+  color: var(--mc-text);
+}
+
+.mc-reward__qty {
+  font-size: 19px;
+  color: var(--mc-cyan-bright);
+}
+
+.mc-reward__coins {
+  font-size: 17px;
+  color: var(--mc-text-mute);
+}
+
+.mc-reward__text {
+  font-size: 23px;
+  font-weight: 600;
+  color: var(--mc-text-dim);
+  text-wrap: pretty;
+}
+
+.mc-reward__cooldown {
+  margin-top: 8px;
+  height: 8px;
+  background: var(--mc-bg-track);
+}
+
+.mc-reward__cooldown-fill {
+  height: 8px;
+  background: var(--mc-red);
+  transition: width 0.9s linear;
+}
+
+.mc-reward__aside {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+
+.mc-reward__item {
+  width: 60px;
+  height: 60px;
+}
+
+.mc-reward__item-text {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-size: 12px;
+  color: var(--mc-text-mute);
+  text-align: center;
+  padding: 4px;
+  line-height: 1.2;
+}
+
+.mc-reward__cd-label {
+  font-size: 15px;
+}
+
+.mc-empty {
+  padding: 18px 4px;
+  font-size: 20px;
+  color: var(--mc-text-faint);
+  text-align: center;
+}
+
+/* ---------- Clasificación ---------- */
+
+.mc-leader {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+}
+
+.mc-leader__rank {
+  font-size: 19px;
+  color: #0b0d0a;
+  background: var(--mc-green);
+  padding: 5px 8px;
+}
+
+.mc-leader__name {
+  flex: 1;
+  font-size: 23px;
+  font-weight: 700;
+  color: var(--mc-text);
+}
+
+.mc-leader__value {
+  font-size: 19px;
+  color: var(--mc-cyan-bright);
+}
+
+/* ---------- Cola de efectos ---------- */
+
+.mc-queue-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  animation: mc-pop-in 0.32s ease-out;
+}
+
+.mc-queue-item__emoji {
+  font-size: 28px;
+}
+
+.mc-queue-item__label {
+  flex: 1;
+  font-size: 21px;
+  font-weight: 600;
+  color: var(--mc-text-dim);
+}
+
+.mc-queue-item__eta {
+  font-size: 17px;
+  color: var(--mc-amber);
+}
+
+.mc-queue-item--running .mc-queue-item__eta {
+  color: var(--mc-green);
+  animation: mc-blink 1.1s steps(2, end) infinite;
+}
+
+/* ---------- Zona central y alerta ---------- */
+
+.mc-center {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding-top: 24px;
+}
+
+.mc-alert {
+  width: 760px;
+  align-self: center;
+  flex: 0 0 auto;
+  background: rgba(13, 17, 11, 0.96);
+  box-shadow:
+    inset 0 6px 0 rgba(255, 255, 255, 0.12),
+    inset 0 -6px 0 rgba(0, 0, 0, 0.6),
+    0 0 0 5px var(--mc-alert-color, #f0b232),
+    0 0 60px rgba(240, 178, 50, 0.35);
+  padding: 26px;
+  display: flex;
+  gap: 22px;
+  align-items: center;
+  animation: mc-pop-in 0.45s ease-out;
+}
+
+.mc-alert__slot {
+  width: 132px;
+  height: 132px;
+  background: repeating-linear-gradient(45deg, #241d10 0 7px, #2c2414 7px 14px);
+  box-shadow:
+    inset 0 4px 0 rgba(255, 255, 255, 0.12),
+    inset 0 -4px 0 rgba(0, 0, 0, 0.55);
+  animation: mc-bob 1.8s ease-in-out infinite;
+}
+
+.mc-alert__emoji {
+  font-size: 66px;
+}
+
+.mc-alert__img {
+  width: 96px;
+  height: 96px;
+  object-fit: contain;
+  image-rendering: pixelated;
+}
+
+.mc-alert__body {
+  min-width: 0;
+  flex: 1;
+}
+
+.mc-alert__tag {
+  font-size: 22px;
+  color: var(--mc-alert-color, #f0b232);
+  letter-spacing: 0.06em;
+  margin-bottom: 8px;
+}
+
+.mc-alert__sender {
+  font-size: 44px;
+  font-weight: 900;
+  color: var(--mc-text);
+  line-height: 1.05;
+  margin: 0 0 10px;
+}
+
+.mc-alert__desc {
+  font-size: 26px;
+  font-weight: 600;
+  color: var(--mc-text-soft);
+  text-wrap: pretty;
+  margin: 0;
+}
+
+.mc-alert__command {
+  margin-top: 14px;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--mc-bg-track);
+  box-shadow: inset 0 3px 0 rgba(0, 0, 0, 0.6);
+  padding: 10px 14px;
+}
+
+.mc-alert__command-badge {
+  font-size: 18px;
+  color: var(--mc-green);
+}
+
+.mc-alert__command-text {
+  font-size: 18px;
+  color: var(--mc-text-mute);
+}
+
+/* ---------- Celebración de meta ---------- */
+
+.mc-celebration {
+  align-self: center;
+  flex: 0 0 auto;
+  width: 760px;
+  padding: 30px;
+  text-align: center;
+  background: rgba(13, 17, 11, 0.96);
+  box-shadow:
+    inset 0 6px 0 rgba(255, 255, 255, 0.12),
+    inset 0 -6px 0 rgba(0, 0, 0, 0.6),
+    0 0 0 5px var(--mc-green),
+    0 0 70px rgba(143, 214, 148, 0.35);
+  animation: mc-pop-in 0.45s ease-out;
+}
+
+.mc-celebration__trophy {
+  font-size: 76px;
+  animation: mc-bob 1.6s ease-in-out infinite;
+}
+
+.mc-celebration__kicker {
+  font-size: 22px;
+  color: var(--mc-green);
+  letter-spacing: 0.08em;
+  margin: 12px 0 10px;
+}
+
+.mc-celebration__title {
+  font-size: 42px;
+  font-weight: 900;
+  color: var(--mc-text);
+  line-height: 1.08;
+  margin: 0;
+}
+
+/* ---------- Marquesina ---------- */
+
+.mc-ticker {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 14px 18px;
+}
+
+.mc-ticker__viewport {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.mc-ticker__track {
+  display: flex;
+  gap: 26px;
+  width: max-content;
+  animation: mc-marquee var(--mc-marquee-speed, 26s) linear infinite;
+}
+
+.mc-ticker__item {
+  font-size: 19px;
+  color: var(--mc-text-mute);
+  white-space: nowrap;
+}
+
+/* ---------- Guías de composición (solo vista previa) ---------- */
+
+.mc-guide {
+  display: grid;
+  place-items: center;
+  text-align: center;
+  font-family: 'Silkscreen', 'Courier New', monospace;
+  font-size: 22px;
+}
+
+.mc-guide--gameplay {
+  flex: 1;
+  min-height: 160px;
+  box-shadow: inset 0 0 0 3px rgba(143, 214, 148, 0.22);
+  color: rgba(143, 214, 148, 0.35);
+}
+
+.mc-guide--comments {
+  height: 360px;
+  flex: 0 0 auto;
+  box-shadow: inset 0 0 0 3px rgba(240, 82, 106, 0.25);
+  color: rgba(240, 82, 106, 0.45);
+}
+
+/* ---------- Animaciones ---------- */
+
+@keyframes mc-blink {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.25;
+  }
+}
+
+@keyframes mc-pop-in {
+  0% {
+    opacity: 0;
+    transform: scale(0.86);
+  }
+  60% {
+    opacity: 1;
+    transform: scale(1.03);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes mc-bob {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-6px);
+  }
+}
+
+@keyframes mc-marquee {
+  0% {
+    transform: translateX(0);
+  }
+  100% {
+    transform: translateX(-50%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mc-status__dot,
+  .mc-alert__slot,
+  .mc-celebration__trophy,
+  .mc-queue-item--running .mc-queue-item__eta {
+    animation: none;
+  }
+  .mc-ticker__track {
+    animation-duration: 90s;
+  }
+}
