@@ -1,6 +1,6 @@
 {
   "name": "chaos-live",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "private": true,
   "description": "Modular real-time event middleware connecting TikTok LIVE to Minecraft Java Edition",
   "type": "module",
