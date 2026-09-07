@@ -3,6 +3,7 @@ import type { PlatformAdapter } from '../domain/ports/platform-adapter.js';
 import type { GameAdapter } from '../domain/ports/game-adapter.js';
 import type { QueuePort, QueueItem } from '../domain/ports/queue-port.js';
 import type { PipelineLogEntry } from '../domain/pipeline-state.js';
+import { isPlatformWaitingError } from '../domain/platform-waiting-error.js';
 import type { GoalEngine } from '../goals/goal-engine.js';
 import { RuleEvaluator } from './rule-evaluator.js';
 
@@ -69,11 +70,19 @@ export class EventEngine {
       void this.handleEvent(event);
     });
     adapter.onError((error) => {
+      // "Todavia no hay directo" no es un fallo del que informar en rojo cada
+      // treinta segundos. Se separa de las averias de verdad para que el
+      // streamer que esta preparando la escena no vea su terminal llena de
+      // cruces mientras todo va bien.
+      const esperando = isPlatformWaitingError(error);
+
       this.emitState({
         correlationId: 'SYSTEM',
-        state: 'EVENT_FAILED',
+        state: esperando ? 'PLATFORM_WAITING' : 'EVENT_FAILED',
         timestamp: Date.now(),
-        details: { adapter: adapter.name, error: error.message },
+        details: esperando
+          ? { adapter: adapter.name, reason: error.message }
+          : { adapter: adapter.name, error: error.message },
       });
     });
   }

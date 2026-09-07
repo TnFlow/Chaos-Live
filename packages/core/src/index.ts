@@ -15,6 +15,8 @@ export type {
   QueueItem,
 } from './domain/index.js';
 
+export { PlatformWaitingError, isPlatformWaitingError } from './domain/index.js';
+
 // Engine
 export {
   RuleEvaluator,

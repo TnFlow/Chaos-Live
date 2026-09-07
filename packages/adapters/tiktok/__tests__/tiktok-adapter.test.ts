@@ -46,6 +46,7 @@ jest.unstable_mockModule('tiktok-live-connector/legacy', () => ({
 }));
 
 const { TikTokAdapter } = await import('../src/TikTokAdapter.js');
+const { isPlatformWaitingError } = await import('@chaos-live/core');
 
 describe('TikTokAdapter con el streamer fuera de directo', () => {
   beforeEach(() => {
@@ -94,6 +95,27 @@ describe('TikTokAdapter con el streamer fuera de directo', () => {
     } finally {
       jest.useRealTimers();
     }
+  });
+
+  /**
+   * El motor distingue "esperando directo" de una averia por el tipo del error.
+   * Sin esta marca, cada reintento se registraba como EVENT_FAILED y el
+   * streamer veia una cruz roja cada treinta segundos con todo en orden.
+   */
+  it('marca la espera como PlatformWaitingError, no como averia', async () => {
+    const adapter = new TikTokAdapter({
+      uniqueId: 'quien_sea',
+      reconnect: { enabled: false },
+    });
+
+    const recibidos: Error[] = [];
+    adapter.onError((err) => recibidos.push(err));
+
+    await expect(adapter.connect()).rejects.toThrow();
+
+    expect(recibidos).toHaveLength(1);
+    expect(isPlatformWaitingError(recibidos[0])).toBe(true);
+    expect(recibidos[0]?.message).toContain('quien_sea');
   });
 
   /**

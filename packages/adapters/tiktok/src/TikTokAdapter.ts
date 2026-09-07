@@ -1,5 +1,6 @@
 import { WebcastPushConnection } from 'tiktok-live-connector/legacy';
 import type { PlatformAdapter } from '@chaos-live/core';
+import { PlatformWaitingError } from '@chaos-live/core';
 import type { ChaosEvent } from '@chaos-live/shared-protocol';
 import {
   normalizeGift,
@@ -110,6 +111,10 @@ export class TikTokAdapter implements PlatformAdapter {
   private circuitState: CircuitState = 'CLOSED';
   private failureCount = 0;
   private lastFailureTime = 0;
+
+  // Ultimo error notificado, para no repetir el mismo aviso dos veces.
+  private ultimoErrorMensaje = '';
+  private ultimoErrorEn = 0;
 
   // Reconnection state
   private reconnectAttempts = 0;
@@ -258,7 +263,9 @@ export class TikTokAdapter implements PlatformAdapter {
     // fallo, no abre el circuito y no gasta intentos. Solo se vuelve a mirar
     // cada cierto rato, indefinidamente, hasta que arranque el directo.
     if (esStreamerNoEnDirecto(error)) {
-      this.notifyError(error);
+      this.notifyError(
+        new PlatformWaitingError(`@${this.uniqueId} no está en directo ahora mismo.`, error),
+      );
       if (!this.isExplicitlyDisconnected && this.reconnectConfig.enabled) {
         this.scheduleRetry(this.reconnectConfig.offlinePollMs);
       }
@@ -337,6 +344,16 @@ export class TikTokAdapter implements PlatformAdapter {
   }
 
   private notifyError(error: Error): void {
+    // Un mismo fallo de conexion llega dos veces: por el evento 'error' de la
+    // libreria y por el catch de connect(). Sin esto, el registro escribia cada
+    // aviso por duplicado y parecia que fallaba el doble.
+    const ahora = Date.now();
+    if (error.message === this.ultimoErrorMensaje && ahora - this.ultimoErrorEn < 2000) {
+      return;
+    }
+    this.ultimoErrorMensaje = error.message;
+    this.ultimoErrorEn = ahora;
+
     for (const handler of this.errorHandlers) {
       try {
         handler(error);
