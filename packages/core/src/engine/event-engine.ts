@@ -129,9 +129,29 @@ export class EventEngine {
       await this.gameAdapter.connect();
     }
 
+    // Que una plataforma no este disponible no puede impedir el arranque.
+    //
+    // El caso normal es exactamente ese: el streamer abre Chaos-Live y luego le
+    // da a "empezar directo" en TikTok, asi que en el arranque no hay ningun
+    // directo al que conectarse. Dejando propagar la excepcion, el panel y el
+    // overlay ni siquiera llegaban a servirse, el proceso moria con codigo 1 y
+    // el supervisor repetia el arranque entero una y otra vez. Cada adapter
+    // reintenta por su cuenta, asi que aqui solo se anota la espera.
     for (const adapter of this.platformAdapters) {
-      if (!adapter.isConnected()) {
+      if (adapter.isConnected()) continue;
+
+      try {
         await adapter.connect();
+      } catch (err) {
+        this.emitState({
+          correlationId: 'SYSTEM',
+          state: 'PLATFORM_WAITING',
+          timestamp: Date.now(),
+          details: {
+            adapter: adapter.name,
+            reason: err instanceof Error ? err.message : String(err),
+          },
+        });
       }
     }
 
@@ -152,14 +172,27 @@ export class EventEngine {
       this.dispatchTimer = undefined;
     }
 
+    // Se desconecta siempre, diga lo que diga `isConnected()`.
+    //
+    // Un adapter que esta reintentando por su cuenta no esta conectado, pero si
+    // tiene temporizadores vivos que mantienen el proceso en pie. Al saltarselo
+    // por no estar conectado, el apagado no terminaba nunca: saltaba el
+    // vigilante de los 5 segundos y una parada limpia acababa saliendo con
+    // codigo 1, que el supervisor leia como una caida.
     for (const adapter of this.platformAdapters) {
-      if (adapter.isConnected()) {
+      try {
         await adapter.disconnect();
+      } catch {
+        // Un adapter que no sabe despedirse no puede bloquear el apagado.
       }
     }
 
-    if (this.gameAdapter && this.gameAdapter.isConnected()) {
-      await this.gameAdapter.disconnect();
+    if (this.gameAdapter) {
+      try {
+        await this.gameAdapter.disconnect();
+      } catch {
+        // Idem.
+      }
     }
   }
 

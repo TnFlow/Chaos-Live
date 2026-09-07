@@ -28,6 +28,51 @@ export interface ReconnectConfig {
   initialDelayMs?: number;
   /** Maximum backoff delay in ms. Default: 30,000ms. */
   maxDelayMs?: number;
+  /**
+   * Cada cuanto se vuelve a mirar si el streamer ya ha empezado el directo.
+   * Default: 30,000ms. No usa backoff ni gasta intentos: puede estar offline
+   * horas y Chaos-Live tiene que seguir esperandole.
+   */
+  offlinePollMs?: number;
+}
+
+/**
+ * Distingue "todavia no has empezado el directo" de un fallo de conexion.
+ *
+ * tiktok-live-connector lanza `UserOfflineError` cuando la sala no existe
+ * todavia. Es el estado normal mientras el streamer monta la escena, y tratarlo
+ * como una averia hacia que Chaos-Live no llegara ni a arrancar.
+ */
+function esStreamerNoEnDirecto(error: Error): boolean {
+  return error.name === 'UserOfflineError' || /isn't online|is offline/i.test(error.message);
+}
+
+/**
+ * Saca un mensaje legible de lo que emite tiktok-live-connector.
+ *
+ * Su evento 'error' no siempre trae un Error: a veces es un objeto plano
+ * `{ exception, info }`, y `String(objeto)` daba "[object Object]" en el
+ * registro, justo en la linea que tenia que explicar por que no conectaba.
+ */
+function comoError(valor: unknown): Error {
+  if (valor instanceof Error) return valor;
+
+  if (valor && typeof valor === 'object') {
+    const obj = valor as Record<string, unknown>;
+    const anidado = obj['exception'] ?? obj['error'];
+    if (anidado instanceof Error) return anidado;
+
+    const texto = obj['info'] ?? obj['message'] ?? obj['reason'];
+    if (typeof texto === 'string' && texto.length > 0) return new Error(texto);
+
+    try {
+      return new Error(JSON.stringify(valor));
+    } catch {
+      return new Error('Error desconocido de TikTok LIVE');
+    }
+  }
+
+  return new Error(String(valor));
 }
 
 export interface TikTokAdapterConfig {
@@ -79,6 +124,7 @@ export class TikTokAdapter implements PlatformAdapter {
       maxAttempts: config.reconnect?.maxAttempts ?? 10,
       initialDelayMs: config.reconnect?.initialDelayMs ?? 1000,
       maxDelayMs: config.reconnect?.maxDelayMs ?? 30000,
+      offlinePollMs: config.reconnect?.offlinePollMs ?? 30000,
     };
 
     this.circuitConfig = {
@@ -131,8 +177,9 @@ export class TikTokAdapter implements PlatformAdapter {
       this.failureCount = 0;
       this.reconnectAttempts = 0;
     } catch (err) {
-      this.handleConnectionFailure(err instanceof Error ? err : new Error(String(err)));
-      throw err;
+      const error = comoError(err);
+      this.handleConnectionFailure(error);
+      throw error;
     }
   }
 
@@ -191,8 +238,8 @@ export class TikTokAdapter implements PlatformAdapter {
       this.emitEvent(normalizeViewerCount(data));
     });
 
-    conn.on('error', (err: any) => {
-      this.notifyError(err instanceof Error ? err : new Error(String(err)));
+    conn.on('error', (err: unknown) => {
+      this.notifyError(comoError(err));
     });
 
     conn.on('disconnected', () => {
@@ -207,6 +254,17 @@ export class TikTokAdapter implements PlatformAdapter {
   }
 
   private handleConnectionFailure(error: Error): void {
+    // Que el streamer no haya empezado todavia no es una averia: no cuenta como
+    // fallo, no abre el circuito y no gasta intentos. Solo se vuelve a mirar
+    // cada cierto rato, indefinidamente, hasta que arranque el directo.
+    if (esStreamerNoEnDirecto(error)) {
+      this.notifyError(error);
+      if (!this.isExplicitlyDisconnected && this.reconnectConfig.enabled) {
+        this.scheduleRetry(this.reconnectConfig.offlinePollMs);
+      }
+      return;
+    }
+
     this.failureCount++;
     this.lastFailureTime = Date.now();
 
@@ -219,6 +277,22 @@ export class TikTokAdapter implements PlatformAdapter {
     if (!this.isExplicitlyDisconnected && this.reconnectConfig.enabled) {
       this.scheduleReconnect();
     }
+  }
+
+  /** Programa un unico reintento dentro de `delay` ms, sin tocar contadores. */
+  private scheduleRetry(delay: number): void {
+    this.clearReconnectTimer();
+
+    this.reconnectTimer = setTimeout(() => {
+      void this.connect().catch(() => {
+        // Ya se ha notificado en connect().
+      });
+    }, delay);
+
+    // Un reintento pendiente no puede ser lo unico que mantenga vivo el
+    // proceso: si no, cerrar Chaos-Live mientras espera un directo dejaba el
+    // apagado colgado hasta que saltaba el vigilante.
+    this.reconnectTimer.unref?.();
   }
 
   private scheduleReconnect(): void {
@@ -242,12 +316,7 @@ export class TikTokAdapter implements PlatformAdapter {
     );
 
     this.reconnectAttempts++;
-
-    this.reconnectTimer = setTimeout(() => {
-      void this.connect().catch(() => {
-        // Errors handled in connect()
-      });
-    }, delay);
+    this.scheduleRetry(delay);
   }
 
   private clearReconnectTimer(): void {

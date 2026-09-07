@@ -16,7 +16,13 @@ export type PipelineState =
   | 'EVENT_QUEUED'
   | 'ACTION_DISPATCHED'
   | 'EVENT_COMPLETED'
-  | 'EVENT_FAILED';
+  | 'EVENT_FAILED'
+  /**
+   * Una plataforma no esta disponible todavia y el motor sigue adelante sin
+   * ella. El caso tipico es abrir Chaos-Live antes de empezar el directo: no es
+   * un fallo del que haya que recuperarse, es una espera.
+   */
+  | 'PLATFORM_WAITING';
 
 /**
  * Structured pipeline log entry.

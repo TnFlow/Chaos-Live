@@ -274,9 +274,11 @@ async function buildDiagnostics(context: ApiContext): Promise<{
     checks.push({
       id: 'platform',
       label: 'Plataforma',
-      status: 'error',
-      detail: `Sin conexión con ${platforms.map((p) => p.name).join(', ')}.`,
-      hint: 'Comprueba que TIKTOK_USERNAME esté bien escrito en .env y que la cuenta esté transmitiendo en directo ahora mismo.',
+      // Aviso, no error: esperar a que el streamer empiece el directo es el
+      // estado normal de Chaos-Live recién abierto, y se conecta solo.
+      status: 'warn',
+      detail: `Esperando a que empiece el directo en ${platforms.map((p) => p.name).join(', ')}.`,
+      hint: 'Chaos-Live se conectará solo en cuanto estés en directo. Si ya lo estás, comprueba que TIKTOK_USERNAME esté bien escrito en el archivo .env.',
     });
   }
 

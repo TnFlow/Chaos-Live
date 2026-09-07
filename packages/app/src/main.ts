@@ -320,6 +320,15 @@ async function bootstrap(): Promise<void> {
           broadcastToOverlays('GOAL_PROGRESS', details);
           broadcastToOverlays('GOAL_COMPLETED', details);
           break;
+        case 'PLATFORM_WAITING':
+          // No es una caída: el streamer todavía no ha empezado. Se dice tal
+          // cual, porque antes esto tumbaba el arranque entero y lo único que
+          // veía era "se detuvo inesperadamente (codigo 1)".
+          logger.warn(
+            { correlationId, ...details },
+            `⏸️  [${state}] ${details?.['adapter']} todavía no está disponible. Chaos-Live queda esperando y se conectará solo en cuanto empieces el directo.`,
+          );
+          break;
         case 'EVENT_VALIDATED':
           logger.debug({ correlationId }, `✔️  [${state}] Payload validated`);
           break;

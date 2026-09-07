@@ -512,3 +512,78 @@ describe('EventEngine Orchestrator', () => {
     await engine.stop();
   });
 });
+
+
+/**
+ * Una plataforma que no conecta porque el streamer todavia no esta en directo,
+ * y que sigue con un reintento pendiente por dentro.
+ */
+class PlataformaSinDirecto implements PlatformAdapter {
+  readonly name = 'TikTok LIVE';
+  public intentosDeConexion = 0;
+  public desconectada = false;
+
+  async connect(): Promise<void> {
+    this.intentosDeConexion++;
+    throw new Error("The requested user isn't online :(");
+  }
+
+  async disconnect(): Promise<void> {
+    this.desconectada = true;
+  }
+
+  onEvent(): void {}
+  onError(): void {}
+
+  isConnected(): boolean {
+    return false;
+  }
+}
+
+describe('EventEngine con la plataforma no disponible', () => {
+  /**
+   * Abrir Chaos-Live antes de empezar el directo es el orden normal. Cuando
+   * esta excepcion se propagaba, el arranque entero moria con codigo 1 y el
+   * supervisor lo repetia diez veces: ni panel, ni overlay, ni una explicacion.
+   */
+  it('arranca igual y lo anota como espera, no como caida', async () => {
+    const plataforma = new PlataformaSinDirecto();
+    const entradas: PipelineLogEntry[] = [];
+
+    const engine = new EventEngine({
+      queue: new InMemoryPriorityQueue(),
+      gameAdapter: new MockGame(),
+      platformAdapters: [plataforma],
+      onPipelineState: (entry) => entradas.push(entry),
+    });
+
+    await expect(engine.start()).resolves.toBeUndefined();
+
+    const espera = entradas.find((e) => e.state === 'PLATFORM_WAITING');
+    expect(espera).toBeDefined();
+    expect(espera?.details?.['adapter']).toBe('TikTok LIVE');
+    expect(String(espera?.details?.['reason'])).toContain("isn't online");
+
+    await engine.stop();
+  });
+
+  /**
+   * `stop()` solo desconectaba adapters con `isConnected()` verdadero, asi que
+   * uno que estaba reintentando se quedaba con sus temporizadores vivos: el
+   * apagado no terminaba, saltaba el vigilante de los 5 segundos y una parada
+   * limpia salia con codigo 1.
+   */
+  it('desconecta la plataforma aunque nunca llegara a conectarse', async () => {
+    const plataforma = new PlataformaSinDirecto();
+
+    const engine = new EventEngine({
+      queue: new InMemoryPriorityQueue(),
+      platformAdapters: [plataforma],
+    });
+
+    await engine.start();
+    await engine.stop();
+
+    expect(plataforma.desconectada).toBe(true);
+  });
+});
