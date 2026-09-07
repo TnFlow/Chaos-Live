@@ -17,8 +17,6 @@
 .mc-stage {
   position: absolute;
   inset: 0;
-  display: grid;
-  place-items: center;
   overflow: hidden;
   pointer-events: none;
 }
@@ -44,16 +42,29 @@
   --mc-text-faint: #5f6d59;
 }
 
-/* Geometria del lienzo completo, solo para la vista de conjunto. */
+/* Geometria del lienzo completo, solo para la vista de conjunto.
+ *
+ * Se centra con posicionamiento absoluto y `translate(-50%, -50%)`, no con el
+ * centrado del contenedor. El lienzo mide 1920 de alto de verdad y `transform`
+ * no cambia el hueco que ocupa, asi que dentro de una ventana normal es un
+ * elemento que desborda: CSS Grid deja de centrar lo que desborda y lo alinea
+ * al inicio, de modo que el centro del lienzo caia muy por debajo de la
+ * pantalla y al escalar sobre ese centro el HUD aparecia abajo y cortado.
+ * Colocandolo asi, el centro esta siempre donde debe, desborde o no. */
 .mc-hud {
-  position: relative;
+  position: absolute;
+  top: 0;
+  left: 50%;
   width: 1080px;
   height: 1920px;
-  flex: 0 0 auto;
   overflow: hidden;
   font-family: 'Outfit', system-ui, sans-serif;
-  transform: scale(var(--mc-fit, 1));
-  transform-origin: center center;
+  transform: translateX(-50%) scale(var(--mc-fit, 1));
+  /* Anclado al borde superior a proposito: este HUD concentra todo el peso
+     visual en la mitad de arriba y deja el pie despejado porque en TikTok lo
+     tapan los comentarios. Creciendo desde arriba, subir la escala se come ese
+     hueco vacio en vez de cortar la barra de estado y las metas. */
+  transform-origin: top center;
 }
 
 /* Franjas del artboard: solo para revisar el diseño fuera de OBS. */

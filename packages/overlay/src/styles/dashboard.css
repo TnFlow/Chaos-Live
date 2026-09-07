@@ -1656,3 +1656,108 @@ body {
   color: #94a3b8;
   font-style: italic;
 }
+
+/* ---------- Sonidos por evento (Estudio de Overlay) ---------- */
+
+.sound-events,
+.sound-upload {
+  margin-top: 18px;
+  padding: 14px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.sound-hint {
+  margin: 4px 0 12px;
+  font-size: 0.78rem;
+  line-height: 1.45;
+  opacity: 0.7;
+}
+
+.sound-event-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr) auto;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+/* La etiqueta se parte en dos lineas antes que cortarse: "Comparten el
+   directo" salia como "Comparten el dir..." en la columna estrecha. */
+.sound-event-label {
+  font-size: 0.82rem;
+  line-height: 1.25;
+}
+
+.sound-try-btn,
+.sound-del-btn {
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.06);
+  color: inherit;
+  border-radius: 8px;
+  padding: 5px 9px;
+  cursor: pointer;
+  font-size: 0.8rem;
+  line-height: 1;
+  transition: background 0.15s ease;
+}
+
+.sound-try-btn:hover,
+.sound-del-btn:hover {
+  background: rgba(255, 255, 255, 0.14);
+}
+
+.sound-upload-btn {
+  display: inline-block;
+  padding: 9px 16px;
+  border-radius: 10px;
+  border: 1px dashed rgba(255, 255, 255, 0.28);
+  cursor: pointer;
+  font-size: 0.85rem;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.sound-upload-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.5);
+}
+
+.sound-upload-btn.is-busy {
+  opacity: 0.6;
+  cursor: progress;
+}
+
+.sound-aviso {
+  margin: 10px 0 0;
+  font-size: 0.8rem;
+  line-height: 1.4;
+}
+
+.sound-list {
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+}
+
+.sound-list-row {
+  display: grid;
+  grid-template-columns: auto 1fr auto auto;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.sound-list-name {
+  font-size: 0.82rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sound-list-size {
+  font-size: 0.72rem;
+  opacity: 0.6;
+  white-space: nowrap;
+}

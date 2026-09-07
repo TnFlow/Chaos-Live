@@ -35,6 +35,7 @@
   import {
     type OverlayCustomSettings,
     type OverlayLayout,
+    type OverlaySoundEvent,
     type OverlayTheme,
     DEFAULT_OVERLAY_SETTINGS,
     THEME_PALETTES,
@@ -386,18 +387,38 @@
     }
     activeAlert = alert;
 
-    // Play Sound Effect
+    // Suena, por orden: lo que pida la regla concreta, luego lo que el streamer
+    // haya elegido para ese tipo de evento, y si no, el de siempre.
     if (overlaySettings.soundEnabled) {
-      const soundId =
-        alert.viewerFeedback?.soundEffect ||
-        (alert.giftName === 'Lion' ? 'monster-roar' : alert.giftName === 'Money Gun' ? 'tnt-boom' : 'chime-diamond');
-      playSound(soundId);
+      const porDefecto =
+        alert.giftName === 'Lion'
+          ? 'monster-roar'
+          : alert.giftName === 'Money Gun'
+            ? 'tnt-boom'
+            : 'chime-diamond';
+
+      playSound(
+        alert.viewerFeedback?.soundEffect || sonidoDe(alert.soundEvent ?? 'gift', porDefecto),
+      );
     }
 
     const duration = (overlaySettings.bannerDurationSeconds || 4.8) * 1000;
     alertTimeout = setTimeout(() => {
       activeAlert = null;
     }, duration);
+  }
+
+  /**
+   * Sonido elegido para un momento del directo.
+   *
+   * Devuelve lo que el streamer haya configurado —un sonido incorporado o uno
+   * suyo subido al panel— y, si no ha tocado nada, el de siempre. Devolver
+   * `undefined` en vez de una cadena vacia deja que `playSound` decida no sonar
+   * sin tener que repetir la comprobacion en cada llamada.
+   */
+  function sonidoDe(evento: OverlaySoundEvent, porDefecto: string): string | undefined {
+    const elegido = overlaySettings.eventSounds?.[evento] ?? porDefecto;
+    return elegido && elegido !== 'none' ? elegido : undefined;
   }
 
   function triggerCelebration(goal: GoalView) {
@@ -407,7 +428,7 @@
     celebratingGoal = goal;
 
     if (overlaySettings.soundEnabled) {
-      playSound('victory-fanfare');
+      playSound(sonidoDe('goal', 'victory-fanfare'));
     }
 
     celebrationTimeout = setTimeout(() => {
@@ -536,9 +557,19 @@
       });
     } else if (packet.type === 'CHAOS_EVENT') {
       const event = packet.payload;
-      totalEventsReceived++;
 
       const user: StreamUser = event.user || { id: 'anon', displayName: 'Anónimo' };
+
+      // El aforo de la sala no es algo que haya hecho un espectador: lo manda
+      // TikTok a nombre de un usuario ficticio "System". Colandolo en el muro
+      // salian lineas de "System" sin texto entre los comentarios de la gente.
+      // Se ignora aqui y no cuenta como evento del directo.
+      if (event.type === 'viewer_count' || user.id === 'system') {
+        return;
+      }
+
+      totalEventsReceived++;
+
       let icon = '💬';
       let title = user.displayName;
       let subtitle = '';
@@ -554,6 +585,7 @@
 
           triggerAlert({
             id: event.id,
+            soundEvent: 'gift',
             title: repeat > 1 ? `¡RACHA DE REGALOS x${repeat}!` : `🎁 ${giftName.toUpperCase()} ENVIADO!`,
             sender: user.displayName,
             giftName,
@@ -581,7 +613,7 @@
           accentColor = currentTheme.accent3;
           subtitle = `envió ${event.metadata?.likeCount || 1} me gusta`;
           if (overlaySettings.soundEnabled && Math.random() > 0.6) {
-            playSound('heart-pop', 0.4);
+            playSound(sonidoDe('like', 'heart-pop'), 0.4);
           }
           break;
         }
@@ -591,6 +623,7 @@
           subtitle = 'empezó a seguir el directo';
           triggerAlert({
             id: event.id,
+            soundEvent: 'follow',
             title: '⭐ ¡NUEVO SEGUIDOR!',
             sender: user.displayName,
             value: event.value,

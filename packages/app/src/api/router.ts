@@ -15,6 +15,13 @@ import type { ChaosEvent, OverlaySettings } from '@chaos-live/shared-protocol';
 import type { WebSocketHub } from '../server.js';
 import { saveRules } from '../config/config.js';
 import { logger } from '../logger.js';
+import {
+  listSounds,
+  saveSound,
+  deleteSound,
+  SoundValidationError,
+  MAX_BYTES_SONIDO,
+} from '../config/sounds.js';
 
 /**
  * Almacén de los ajustes del overlay. Lo posee la raíz de composición
@@ -67,6 +74,7 @@ export const PUBLIC_READONLY_ROUTES: ReadonlySet<string> = new Set([
   'GET /api/goals',
   'GET /api/overlay-settings',
   'GET /api/gifts/presets',
+  'GET /api/sounds',
 ]);
 
 
@@ -743,6 +751,43 @@ export async function handleApiRequest(
       const settings = context.overlaySettings.update(updates);
       context.wsHub.broadcastToOverlay('OVERLAY_SETTINGS_UPDATED', settings);
       sendJson(res, 200, { success: true, settings });
+      return true;
+    }
+
+    // GET /api/sounds — sonidos que ha subido el streamer
+    if (pathname === '/api/sounds' && method === 'GET') {
+      sendJson(res, 200, { sounds: listSounds(), maxBytes: MAX_BYTES_SONIDO });
+      return true;
+    }
+
+    // POST /api/sounds — subir uno nuevo
+    //
+    // Llega como data URL porque el panel lo lee con FileReader: montar un
+    // analizador de multipart para esto seria mucho aparato en un servidor que
+    // por lo demas solo habla JSON.
+    if (pathname === '/api/sounds' && method === 'POST') {
+      const parsed = await readJsonBody(req);
+      try {
+        const sound = saveSound(String(parsed['name'] ?? ''), String(parsed['dataUrl'] ?? ''));
+        sendJson(res, 201, { success: true, sound });
+      } catch (err) {
+        if (err instanceof SoundValidationError) {
+          sendJson(res, 400, { error: err.message });
+        } else {
+          throw err;
+        }
+      }
+      return true;
+    }
+
+    // DELETE /api/sounds/:id
+    if (pathname.startsWith('/api/sounds/') && method === 'DELETE') {
+      const id = decodeURIComponent(pathname.slice('/api/sounds/'.length));
+      if (deleteSound(id)) {
+        sendJson(res, 200, { success: true });
+      } else {
+        sendJson(res, 404, { error: 'Ese sonido ya no está.' });
+      }
       return true;
     }
 

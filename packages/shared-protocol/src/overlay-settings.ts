@@ -43,7 +43,29 @@ export interface OverlaySettings {
   fontFamily: 'Outfit' | 'Inter' | 'Plus Jakarta Sans' | 'JetBrains Mono';
   /** Cuánto permanece en pantalla una alerta, de 3 a 10 segundos. */
   bannerDurationSeconds: number;
+
+  /**
+   * Sonido de cada tipo de evento.
+   *
+   * La clave es el tipo (`gift`, `like`, `follow`, `comment`, `share`,
+   * `goal`), y el valor puede ser el id de uno de los sonidos incorporados o
+   * la URL de uno que haya subido el streamer (`/sounds/loquesea.mp3`).
+   * `'none'` lo silencia. Lo que no esté aquí usa el sonido de siempre.
+   */
+  eventSounds: Partial<Record<OverlaySoundEvent, string>>;
 }
+
+/** Momentos del directo a los que se les puede poner sonido. */
+export type OverlaySoundEvent = 'gift' | 'like' | 'follow' | 'comment' | 'share' | 'goal';
+
+export const OVERLAY_SOUND_EVENTS: readonly OverlaySoundEvent[] = [
+  'gift',
+  'like',
+  'follow',
+  'comment',
+  'share',
+  'goal',
+];
 
 export const DEFAULT_OVERLAY_SETTINGS: OverlaySettings = {
   layout: 'landscape',
@@ -60,4 +82,14 @@ export const DEFAULT_OVERLAY_SETTINGS: OverlaySettings = {
   glowIntensity: 0.8,
   fontFamily: 'Outfit',
   bannerDurationSeconds: 4.8,
+  // Los mismos que sonaban antes de poder elegirlos, para que actualizar no
+  // cambie como suena un directo que ya funcionaba.
+  eventSounds: {
+    gift: 'chime-diamond',
+    like: 'heart-pop',
+    follow: 'powerup-level',
+    comment: 'none',
+    share: 'none',
+    goal: 'victory-fanfare',
+  },
 };

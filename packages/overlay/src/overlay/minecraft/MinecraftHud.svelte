@@ -58,9 +58,22 @@
     showGuides?: boolean;
   } = $props();
 
+  /**
+   * Se mide el escenario, no la ventana.
+   *
+   * Con `svelte:window` el HUD se ajustaba al navegador entero, que solo
+   * coincide con su hueco cuando el overlay ocupa la pagina completa. En
+   * cualquier otro sitio (una previsualizacion, un contenedor con margenes) el
+   * calculo salia de mas y el HUD se desbordaba.
+   */
   let stageWidth = $state(HUD_WIDTH);
   let stageHeight = $state(HUD_HEIGHT);
 
+  /**
+   * Cuanto hay que encoger el lienzo de 1080x1920 para que quepa entero, por la
+   * escala que haya pedido el streamer. En OBS, con la fuente a 1080x1920, sale
+   * exactamente 1 y no hay reescalado.
+   */
   let fit = $derived(
     Math.min(stageWidth / HUD_WIDTH, stageHeight / HUD_HEIGHT) * (settings.scale || 1)
   );
@@ -70,9 +83,7 @@
   let showSideColumn = $derived(settings.leaderboardPosition !== 'hidden' || queue.length > 0);
 </script>
 
-<svelte:window bind:innerWidth={stageWidth} bind:innerHeight={stageHeight} />
-
-<div class="mc-stage">
+<div class="mc-stage" bind:clientWidth={stageWidth} bind:clientHeight={stageHeight}>
   <div
     class="mc-hud {showGuides ? 'mc-hud--guides' : ''}"
     style="--mc-fit: {fit}"

@@ -2,7 +2,8 @@
 
   import { DEFAULT_OVERLAY_SETTINGS, THEME_PALETTES } from '../types/overlay-config';
   import { SOUND_PRESETS, playSound, setMasterVolume, setMuted } from '../utils/sound-engine';
-  import type { OverlaySettings } from '@chaos-live/shared-protocol';
+  import type { OverlaySettings, OverlaySoundEvent } from '@chaos-live/shared-protocol';
+  import { api, ApiError, type CustomSound } from '../lib/api';
   import {
     WIDGET_LABEL,
     widgetSize,
@@ -27,6 +28,94 @@
    */
   const widgetUrl = (name: WidgetName): string =>
     `${overlayBaseUrl || overlayBase}/?view=overlay&theme=${overlaySettings.theme}&widget=${name}`;
+
+  /**
+   * Sonidos propios del streamer, servidos por el propio Chaos-Live.
+   *
+   * Se cargan al abrir la pestaña y se refrescan tras cada subida o borrado,
+   * porque la lista la manda el servidor: es el unico que sabe que hay de
+   * verdad en la carpeta.
+   */
+  let sonidosPropios = $state<CustomSound[]>([]);
+  let subiendo = $state(false);
+  let avisoSonido = $state('');
+
+  const MOMENTOS: { id: OverlaySoundEvent; etiqueta: string }[] = [
+    { id: 'gift', etiqueta: '🎁 Regalo recibido' },
+    { id: 'like', etiqueta: '❤️ Me gusta' },
+    { id: 'follow', etiqueta: '⭐ Nuevo seguidor' },
+    { id: 'share', etiqueta: '🚀 Comparten el directo' },
+    { id: 'comment', etiqueta: '💬 Comentario' },
+    { id: 'goal', etiqueta: '🏆 Meta completada' },
+  ];
+
+  async function cargarSonidos() {
+    try {
+      sonidosPropios = await api.getSounds();
+    } catch (err) {
+      avisoSonido = err instanceof ApiError ? err.userMessage : String(err);
+    }
+  }
+
+  $effect(() => {
+    void cargarSonidos();
+  });
+
+  /** Sonido que suena ahora mismo para un momento dado. */
+  function sonidoDe(momento: OverlaySoundEvent): string {
+    return overlaySettings.eventSounds?.[momento] ?? 'none';
+  }
+
+  function elegirSonido(momento: OverlaySoundEvent, valor: string) {
+    overlaySettings.eventSounds = { ...overlaySettings.eventSounds, [momento]: valor };
+    saveOverlaySettings();
+  }
+
+  async function subirSonido(evento: Event) {
+    const input = evento.target as HTMLInputElement;
+    const archivo = input.files?.[0];
+    if (!archivo) return;
+
+    subiendo = true;
+    avisoSonido = '';
+    try {
+      const dataUrl = await new Promise<string>((resolve, reject) => {
+        const lector = new FileReader();
+        lector.onload = () => resolve(String(lector.result));
+        lector.onerror = () => reject(new Error('No se pudo leer el archivo.'));
+        lector.readAsDataURL(archivo);
+      });
+
+      const sonido = await api.uploadSound(archivo.name, dataUrl);
+      await cargarSonidos();
+      avisoSonido = `✅ "${sonido.name}" listo para usar.`;
+      playSound(sonido.url);
+    } catch (err) {
+      avisoSonido = `⚠️ ${err instanceof ApiError ? err.userMessage : String(err)}`;
+    } finally {
+      subiendo = false;
+      // Permite volver a elegir el mismo archivo si hizo falta reintentar.
+      input.value = '';
+    }
+  }
+
+  async function borrarSonido(sonido: CustomSound) {
+    // Un sonido borrado que siguiera elegido dejaria ese evento mudo sin
+    // explicacion, asi que los momentos que lo usaban vuelven a "sin sonido".
+    try {
+      await api.deleteSound(sonido.id);
+      const limpio = { ...overlaySettings.eventSounds };
+      for (const [momento, valor] of Object.entries(limpio)) {
+        if (valor === sonido.url) limpio[momento as OverlaySoundEvent] = 'none';
+      }
+      overlaySettings.eventSounds = limpio;
+      saveOverlaySettings();
+      await cargarSonidos();
+      avisoSonido = `🗑️ "${sonido.name}" borrado.`;
+    } catch (err) {
+      avisoSonido = `⚠️ ${err instanceof ApiError ? err.userMessage : String(err)}`;
+    }
+  }
 
   let {
     overlaySettings = $bindable(),
@@ -224,6 +313,91 @@
             oninput={() => setMasterVolume(overlaySettings.masterVolume)}
             class="styled-range"
           />
+        </div>
+
+        <div class="sound-events">
+          <span class="pad-title">🔔 Sonido de cada momento del directo</span>
+          <p class="sound-hint">
+            Elige uno de los incluidos o sube el tuyo. Se guarda solo.
+          </p>
+
+          {#each MOMENTOS as momento}
+            <div class="sound-event-row">
+              <label class="sound-event-label" for="sonido-{momento.id}">{momento.etiqueta}</label>
+              <select
+                id="sonido-{momento.id}"
+                class="styled-select"
+                value={sonidoDe(momento.id)}
+                onchange={(e) => elegirSonido(momento.id, (e.target as HTMLSelectElement).value)}
+              >
+                <option value="none">🔇 Sin sonido</option>
+                <optgroup label="Incluidos">
+                  {#each SOUND_PRESETS as preset}
+                    <option value={preset.id}>{preset.name}</option>
+                  {/each}
+                </optgroup>
+                {#if sonidosPropios.length > 0}
+                  <optgroup label="Los tuyos">
+                    {#each sonidosPropios as propio}
+                      <option value={propio.url}>🎵 {propio.name}</option>
+                    {/each}
+                  </optgroup>
+                {/if}
+              </select>
+              <button
+                type="button"
+                class="sound-try-btn"
+                title="Escuchar"
+                onclick={() => playSound(sonidoDe(momento.id))}
+              >▶</button>
+            </div>
+          {/each}
+        </div>
+
+        <div class="sound-upload">
+          <span class="pad-title">📤 Tus sonidos</span>
+          <p class="sound-hint">
+            MP3, WAV, OGG, M4A o AAC. Máximo 3 MB: son avisos de un par de
+            segundos, no canciones.
+          </p>
+
+          <label class="sound-upload-btn" class:is-busy={subiendo}>
+            {subiendo ? 'Subiendo…' : '➕ Subir un sonido'}
+            <input
+              type="file"
+              accept="audio/*"
+              disabled={subiendo}
+              onchange={subirSonido}
+              hidden
+            />
+          </label>
+
+          {#if avisoSonido}
+            <p class="sound-aviso">{avisoSonido}</p>
+          {/if}
+
+          {#if sonidosPropios.length > 0}
+            <ul class="sound-list">
+              {#each sonidosPropios as propio}
+                <li class="sound-list-row">
+                  <button
+                    type="button"
+                    class="sound-try-btn"
+                    title="Escuchar"
+                    onclick={() => playSound(propio.url)}
+                  >▶</button>
+                  <span class="sound-list-name">{propio.name}</span>
+                  <span class="sound-list-size">{Math.round(propio.sizeBytes / 1024)} KB</span>
+                  <button
+                    type="button"
+                    class="sound-del-btn"
+                    title="Borrar"
+                    onclick={() => borrarSonido(propio)}
+                  >🗑️</button>
+                </li>
+              {/each}
+            </ul>
+          {/if}
         </div>
 
         <div class="sound-test-pad">

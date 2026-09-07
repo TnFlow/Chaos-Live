@@ -24,6 +24,16 @@
   transform-origin: top left;
 }
 
+/* El tema minecraft se escala solo.
+ *
+ * Su HUD ajusta un lienzo fijo de 1080x1920 con `--mc-fit`, que ya incluye la
+ * escala del streamer. Aplicandole ademas el `--ui-scale` de aqui, la escala se
+ * multiplicaba por si misma —al 140% quedaba al 196%— y encima el origen
+ * `top left` empujaba el resultado fuera de la pantalla. */
+.overlay-root.theme-minecraft {
+  transform: none;
+}
+
 /* TikTok Live Studio 9:16 Vertical Portrait Layout */
 .overlay-root.layout-vertical {
   grid-template-columns: 1fr;

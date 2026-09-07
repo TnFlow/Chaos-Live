@@ -214,6 +214,11 @@
 
     if (msg.type === 'EVENT' || msg.type === 'CHAOS_EVENT') {
       const e = msg.payload as any;
+
+      // El aforo llega a nombre de un "System" que no es nadie: no es actividad
+      // del directo y no pinta nada en el muro de eventos.
+      if (e?.type === 'viewer_count' || e?.user?.id === 'system') return;
+
       liveEvents = [
         {
           id: e.id,

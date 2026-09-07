@@ -39,6 +39,12 @@ export interface AlertView {
     bannerColor?: string;
     soundEffect?: string;
   };
+  /**
+   * Que momento del directo es esta alerta, para saber que sonido le toca
+   * segun lo que haya elegido el streamer. Sin esto la alerta solo podia sonar
+   * con los sonidos incorporados.
+   */
+  soundEvent?: 'gift' | 'follow' | 'share' | 'goal';
 }
 
 /** Un comando ya ejecutado, para la marquesina inferior. */

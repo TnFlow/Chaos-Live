@@ -26,6 +26,8 @@ export type {
 
 export {
   DEFAULT_OVERLAY_SETTINGS,
+  OVERLAY_SOUND_EVENTS,
+  type OverlaySoundEvent,
   type OverlaySettings,
   type OverlayLayout,
   type OverlayTheme,

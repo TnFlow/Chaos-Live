@@ -6,6 +6,7 @@ import { WebSocketServer, WebSocket } from 'ws';
 import { PROTOCOL_VERSION } from '@chaos-live/shared-protocol';
 import type { ChaosEvent, GameAction } from '@chaos-live/shared-protocol';
 import { logger } from './logger.js';
+import { resolveSoundFile, soundContentType } from './config/sounds.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -438,6 +439,29 @@ export class WebSocketHub {
           uptime: process.uptime(),
         }),
       );
+      return;
+    }
+
+    // Sonidos que ha subido el streamer.
+    //
+    // Se sirven desde las dos superficies a proposito: los widgets que TikTok
+    // LIVE Studio carga por el puerto publico tienen que poder sonar igual que
+    // el overlay del puerto de gestion. Son archivos de audio, no dan acceso a
+    // nada.
+    if (pathname.startsWith('/sounds/')) {
+      const file = resolveSoundFile(decodeURIComponent(pathname.slice('/sounds/'.length)));
+      if (!file) {
+        res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
+        res.end('Sonido no encontrado');
+        return;
+      }
+
+      res.writeHead(200, {
+        'Content-Type': soundContentType(file),
+        'Access-Control-Allow-Origin': '*',
+        'Cache-Control': 'public, max-age=300',
+      });
+      fs.createReadStream(file).pipe(res);
       return;
     }
 

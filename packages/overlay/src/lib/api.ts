@@ -15,6 +15,14 @@ import type {
 } from './types';
 import type { OverlaySettings, TikTokGiftPreset } from '@chaos-live/shared-protocol';
 
+/** Un sonido que ha subido el streamer, servido por el propio Chaos-Live. */
+export interface CustomSound {
+  id: string;
+  name: string;
+  url: string;
+  sizeBytes: number;
+}
+
 /** Error de la API que conserva el mensaje explicativo del servidor. */
 export class ApiError extends Error {
   constructor(
@@ -165,4 +173,20 @@ export const api = {
   resumeQueue: () => request<{ isPaused: boolean }>('/api/queue/resume', { method: 'POST' }),
 
   clearQueue: () => request<{ success: boolean }>('/api/queue/clear', { method: 'POST' }),
+
+  async getSounds(): Promise<CustomSound[]> {
+    const data = await request<{ sounds: CustomSound[] }>('/api/sounds');
+    return data.sounds ?? [];
+  },
+
+  async uploadSound(name: string, dataUrl: string): Promise<CustomSound> {
+    const data = await request<{ sound: CustomSound }>('/api/sounds', {
+      method: 'POST',
+      body: JSON.stringify({ name, dataUrl }),
+    });
+    return data.sound;
+  },
+
+  deleteSound: (id: string) =>
+    request<{ success: boolean }>(`/api/sounds/${encodeURIComponent(id)}`, { method: 'DELETE' }),
 };

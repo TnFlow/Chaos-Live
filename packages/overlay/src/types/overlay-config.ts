@@ -6,10 +6,11 @@
  * persiste y los sirve. Aquí solo se reexportan por comodidad, junto con las
  * paletas de tema, que son puramente presentación del cliente.
  */
-export { DEFAULT_OVERLAY_SETTINGS } from '@chaos-live/shared-protocol';
+export { DEFAULT_OVERLAY_SETTINGS, OVERLAY_SOUND_EVENTS } from '@chaos-live/shared-protocol';
 export type {
   OverlaySettings,
   OverlaySettings as OverlayCustomSettings,
+  OverlaySoundEvent,
   OverlayLayout,
   OverlayTheme,
   RewardsDisplayMode,
