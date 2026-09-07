@@ -9,34 +9,35 @@ en la carpeta 'bin\', por lo que funciona inmediatamente en cualquier PC con
 Windows sin necesidad de instalar Node.js ni configurar terminales.
 
 -----------------------------------------------------------------------------
-0. PRIMERO DE TODO: COMPRUEBA TU PC
+1. EMPIEZA AQUÍ: UN SOLO BOTÓN
 -----------------------------------------------------------------------------
-Haz doble clic en "Instalar-Chaos-Live.bat" antes de nada.
+Haz doble clic en "Iniciar-Chaos-Live.bat". Ya está.
 
-Revisa en un minuto que este PC tiene todo lo necesario, prepara la base de
-datos y la configuración, y arranca el servidor un momento para confirmar que
-funciona de verdad. Te dirá con claridad qué falta y cómo resolverlo.
+La primera vez prepara el equipo solo: crea la configuración y la base de
+datos, te pregunta tu usuario de TikTok, revisa que no falte nada y arranca.
+Después se abre tu navegador en el panel de control:
 
-Puedes volver a ejecutarlo cuantas veces quieras: no toca nada que ya esté
-bien, y nunca borra tu historial ni tu configuración.
-
------------------------------------------------------------------------------
-1. INICIO RÁPIDO EN 1 CLIC
------------------------------------------------------------------------------
-1. Haz doble clic en "Iniciar-Chaos-Live.bat".
-2. Se abrirá una ventana de consola y automáticamente tu navegador en:
    👉 http://localhost:8080/dashboard
-3. ¡Ya estás listo para probar! En la pestaña "🧪 Simulator" o en el panel
-   lateral puedes presionar "🌹 1x Rose" o "🦁 1x Lion" para probar acciones.
+
+Las siguientes veces arranca directo, sin preguntar nada.
+
+Si dejas el usuario vacío, Chaos-Live arranca en modo simulación: puedes
+probarlo entero sin estar en directo, con regalos y efectos de mentira.
 
 -----------------------------------------------------------------------------
-2. CONFIGURAR TU CANAL DE TIKTOK / TWITCH
+2. LOS OTROS BOTONES (solo si los necesitas)
 -----------------------------------------------------------------------------
-- Opción Rápida: Haz doble clic en "Configurar-Streamer.bat" y responde las
-  preguntas (tu nombre de usuario, si quieres modo prueba, etc.).
-- Opción Manual: Abre el archivo ".env" con el Bloc de notas y escribe:
-    TIKTOK_USERNAME=tu_usuario_de_tiktok (sin @)
-    USE_MOCK=false
+- "Configurar-Streamer.bat"
+  Para cambiar de canal de TikTok más adelante. No toca el resto de tus
+  ajustes.
+
+- "Instalar-Chaos-Live.bat"
+  Revisa el equipo a fondo y te dice qué falta y cómo arreglarlo. Útil si
+  algo dejó de funcionar. Nunca borra tu historial ni tu configuración.
+
+- "Instalar-Mod-Minecraft.bat"
+  Copia el mod a tu carpeta de mods. Busca en Minecraft normal, CurseForge,
+  Prism y Modrinth, y te deja elegir la instancia si tienes varias.
 
 -----------------------------------------------------------------------------
 3. CONECTAR CON MINECRAFT
@@ -58,16 +59,26 @@ Opción B: Servidor con RCON (Sin mods)
 - En el archivo .env pon esa misma contraseña.
 
 -----------------------------------------------------------------------------
-4. AGREGAR A OBS STUDIO
+4. PONER EL OVERLAY EN TIKTOK LIVE STUDIO
 -----------------------------------------------------------------------------
-1. En OBS Studio, agrega una nueva fuente: "Navegador" (Browser Source).
-2. Configura:
-   - URL: http://localhost:8080/overlay
-   - Ancho: 1920
-   - Alto: 1080
-   - CSS personalizado: Déjalo vacío (el fondo es transparente).
-3. ¡Tus espectadores verán las alertas animadas, la tabla de mejores donadores,
-   la barra de meta comunitaria y el feed de eventos en vivo!
+TikTok LIVE Studio no tiene "fuente de navegador": tiene fuentes "Link", y
+cada elemento del overlay es su propio enlace. Así puedes colocar cada pieza
+donde quieras en la pantalla vertical.
+
+1. Abre el panel de control y ve a la pestaña "Overlay Studio".
+2. Ahí tienes la lista de enlaces con su tamaño. Copia el que quieras.
+3. En LIVE Studio: añade una fuente "Link", pega el enlace y dale a la capa
+   el tamaño que indica la lista.
+4. Repite con los elementos que quieras: meta, regalos, top de apoyos,
+   alertas, marquesina...
+
+La lista cambia según el tema que tengas elegido, porque cada tema pinta sus
+propios paneles. Los tamaños son un máximo con margen: pasarse no rompe nada,
+quedarse corto recorta el panel.
+
+¿Prefieres OBS Studio? También funciona: usa una fuente "Navegador" con
+   http://localhost:8081/?view=overlay
+y verás el overlay completo en una sola pieza.
 
 -----------------------------------------------------------------------------
 5. PANEL DE CONTROL (DASHBOARD)

@@ -34,8 +34,26 @@ if (-not (Test-Path $NodeBin)) {
     }
 }
 
-# --- Configuracion ---
+# --- Primera vez: preparar el equipo ---
+#
+# El streamer solo tiene que conocer este boton. Si la instalacion esta a medias
+# (recien descomprimida, o actualizada desde una version antigua), se ejecuta la
+# preparacion completa antes de arrancar: crea el .env, pregunta el canal, deja
+# la base de datos con su esquema y avisa de lo que falte.
 $EnvFile = Join-Path $RootDir ".env"
+$Instalador = Join-Path $RootDir "Instalar-Chaos-Live.ps1"
+$DbEsperada = Join-Path $RootDir "data\chaos-live.db"
+
+$SinPreparar = (-not (Test-Path $EnvFile)) -or
+               (-not (Test-Path $DbEsperada)) -or
+               ((Get-Item $DbEsperada -ErrorAction SilentlyContinue).Length -eq 0)
+
+if ($SinPreparar -and (Test-Path $Instalador)) {
+    Write-Host "[INFO] Primera vez por aqui: preparando el equipo..." -ForegroundColor Yellow
+    & $Instalador -Rapido
+    Write-Host ""
+}
+
 $EnvExample = Join-Path $RootDir ".env.example"
 if (-not (Test-Path $EnvFile) -and (Test-Path $EnvExample)) {
     Copy-Item $EnvExample $EnvFile -Force

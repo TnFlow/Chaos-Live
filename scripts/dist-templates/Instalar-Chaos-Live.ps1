@@ -5,6 +5,9 @@
 # falta ANTES de estar en vivo. Se puede volver a ejecutar cuantas veces haga
 # falta: no pisa nada que ya este bien.
 #
+# Normalmente no hace falta abrirlo a mano: "Iniciar-Chaos-Live.bat" lo ejecuta
+# solo la primera vez, o cuando detecta que algo se ha quedado a medias.
+#
 # Lo que arregla de verdad, y no solo comprueba:
 #   - La base de datos. El lanzador creaba un fichero vacio, que para SQLite no
 #     es una base de datos sino cero bytes: no tiene tablas. La app no se caia
@@ -15,8 +18,16 @@
 #   - El .env. Se le anaden las claves que falten sin tocar las que el streamer
 #     ya haya puesto.
 # =============================================================================
+param(
+    # Lo llama el lanzador: sin prueba de arranque (va a arrancar el servidor de
+    # verdad justo despues) y sin esperar a que pulsen Enter.
+    [switch]$Rapido,
+    # Solo la parte de configuracion, para "Configurar-Streamer.bat".
+    [switch]$SoloConfigurar
+)
+
 $ErrorActionPreference = "Continue"
-$Host.UI.RawUI.WindowTitle = "Chaos-Live - Instalador"
+if (-not $Rapido) { $Host.UI.RawUI.WindowTitle = "Chaos-Live - Instalador" }
 
 $RootDir = $PSScriptRoot
 Set-Location $RootDir
@@ -51,10 +62,55 @@ function Write-Fallo {
     $script:Problemas += $Texto
 }
 
-Write-Host "=========================================================================" -ForegroundColor Cyan
-Write-Host "              CHAOS-LIVE - INSTALADOR" -ForegroundColor Cyan
-Write-Host "        Comprueba que este PC puede dar el directo" -ForegroundColor Cyan
-Write-Host "=========================================================================" -ForegroundColor Cyan
+$EnvFile = Join-Path $RootDir ".env"
+
+. (Join-Path $RootDir "Comun.ps1")
+
+<#
+    Pregunta el usuario de TikTok y lo guarda.
+
+    Antes vivia en "Configurar-Streamer.bat", un boton mas que el streamer tenia
+    que saber que existia. Ahora se pregunta sola la primera vez.
+#>
+function Invoke-Configuracion {
+    $actual = Get-ValorEnv $EnvFile "TIKTOK_USERNAME"
+    if ($actual -and $actual -ne "your_tiktok_username") {
+        Write-Ok "Tu canal ya esta configurado: @$actual"
+        return
+    }
+
+    Write-Host ""
+    Write-Host "  Vamos a configurar tu canal (puedes dejarlo vacio y hacerlo luego)." -ForegroundColor White
+    $usuario = Read-Host "  Tu usuario de TikTok LIVE, sin la @"
+    $usuario = $usuario.Trim().TrimStart('@')
+
+    if ($usuario) {
+        Set-ClaveEnv $EnvFile "TIKTOK_USERNAME" $usuario
+        Set-ClaveEnv $EnvFile "USE_MOCK" "false"
+        Write-Ok "Configurado el canal @$usuario. Chaos-Live se conectara a tu directo."
+    } else {
+        Set-ClaveEnv $EnvFile "USE_MOCK" "true"
+        Write-Ok "Sin usuario: Chaos-Live arranca en modo simulacion, para que puedas probarlo."
+        Write-Host "         Cuando quieras ponerlo, ejecuta 'Configurar-Streamer.bat'." -ForegroundColor DarkGray
+    }
+}
+
+if (-not $Rapido) {
+    Write-Host "=========================================================================" -ForegroundColor Cyan
+    Write-Host "              CHAOS-LIVE - INSTALADOR" -ForegroundColor Cyan
+    Write-Host "        Comprueba que este PC puede dar el directo" -ForegroundColor Cyan
+    Write-Host "=========================================================================" -ForegroundColor Cyan
+}
+
+if ($SoloConfigurar) {
+    Write-Titulo "Configuracion de tu canal"
+    # Se fuerza la pregunta aunque ya hubiera un usuario: para eso lo ha abierto.
+    Set-ClaveEnv $EnvFile "TIKTOK_USERNAME" ""
+    Invoke-Configuracion
+    Write-Host ""
+    Read-Host "Pulsa Enter para cerrar"
+    exit 0
+}
 
 # -----------------------------------------------------------------------------
 Write-Titulo "1 de 7  El paquete esta completo"
@@ -104,7 +160,6 @@ if (-not $NodeVersion) {
 # -----------------------------------------------------------------------------
 Write-Titulo "3 de 7  Configuracion (.env)"
 # -----------------------------------------------------------------------------
-$EnvFile = Join-Path $RootDir ".env"
 $EnvExample = Join-Path $RootDir ".env.example"
 
 if (-not (Test-Path $EnvFile)) {
@@ -128,8 +183,7 @@ $ClavesRequeridas = [ordered]@{
     "USE_MOCK"     = "true"
 }
 
-$Contenido = Get-Content $EnvFile -ErrorAction SilentlyContinue
-if ($null -eq $Contenido) { $Contenido = @() }
+$Contenido = @(Get-Content $EnvFile -ErrorAction SilentlyContinue)
 $Anadidas = @()
 foreach ($clave in $ClavesRequeridas.Keys) {
     $existe = $Contenido | Where-Object { $_ -match "^\s*$clave\s*=" }
@@ -144,10 +198,7 @@ if ($Anadidas.Count -gt 0) {
     Write-Ok "El .env ya tiene todo lo necesario."
 }
 
-$TieneUsuario = Get-Content $EnvFile | Where-Object { $_ -match "^\s*TIKTOK_USERNAME\s*=\s*\S" -and $_ -notmatch "your_tiktok_username" }
-if (-not $TieneUsuario) {
-    Write-Aviso "Todavia no has puesto tu usuario de TikTok." "Ejecuta 'Configurar-Streamer.bat'. Sin el, Chaos-Live arranca en modo simulacion."
-}
+Invoke-Configuracion
 
 # -----------------------------------------------------------------------------
 Write-Titulo "4 de 7  Base de datos"
@@ -193,8 +244,8 @@ function Test-PuertoLibre {
 
 function Get-PuertoDelEnv {
     param([string]$Clave, [int]$PorDefecto)
-    $linea = Select-String -Path $EnvFile -Pattern "^\s*$Clave\s*=\s*(\d+)" -ErrorAction SilentlyContinue | Select-Object -First 1
-    if ($linea) { return [int]$linea.Matches[0].Groups[1].Value }
+    $valor = Get-ValorEnv $EnvFile $Clave
+    if ($valor -match '^\d+$') { return [int]$valor }
     return $PorDefecto
 }
 
@@ -212,35 +263,27 @@ foreach ($p in @(@{N=$PuertoPanel; Q="el panel"}, @{N=$PuertoOverlay; Q="el over
 # -----------------------------------------------------------------------------
 Write-Titulo "6 de 7  Minecraft"
 # -----------------------------------------------------------------------------
-$McDir = Join-Path $env:APPDATA ".minecraft"
-$ModsDir = Join-Path $McDir "mods"
+$CarpetasMods = @(Get-CarpetasDeMods)
 
-if (-not (Test-Path $McDir)) {
-    Write-Aviso "No se ve Minecraft en la carpeta habitual." "Si usas Prism, CurseForge o Modrinth es normal: tendras que copiar el mod a mano."
+if ($CarpetasMods.Count -eq 0) {
+    Write-Aviso "No se ha encontrado ninguna instalacion de Minecraft." "Se han mirado Minecraft normal, CurseForge, Prism y Modrinth. Si usas otro launcher, tendras que copiar el mod a mano. Tambien puedes usar RCON y olvidarte del mod."
 } else {
-    Write-Ok "Minecraft encontrado."
-
-    if (Test-Path $ModsDir) {
-        $fabricApi = Get-ChildItem $ModsDir -Filter "*fabric-api*.jar" -ErrorAction SilentlyContinue
-        if ($fabricApi) {
-            Write-Ok "Fabric API instalada."
-        } else {
-            Write-Aviso "No se ve Fabric API en tu carpeta de mods." "Descargala para 1.20.1 de https://modrinth.com/mod/fabric-api y dejala en $ModsDir"
-        }
-
-        $chaosMod = Get-ChildItem $ModsDir -Filter "*chaos*.jar" -ErrorAction SilentlyContinue
-        if ($chaosMod) {
-            Write-Ok "El mod de Chaos-Live ya esta en tu carpeta de mods."
-        } else {
-            Write-Aviso "El mod de Chaos-Live todavia no esta instalado." "Ejecuta 'Instalar-Mod-Minecraft.bat' cuando lo hayas compilado."
-        }
+    foreach ($c in $CarpetasMods) {
+        Write-Ok "Encontrado: $($c.Lanzador)"
     }
 
-    $fabricLoader = Get-ChildItem (Join-Path $McDir "versions") -Filter "*fabric*" -Directory -ErrorAction SilentlyContinue
-    if ($fabricLoader) {
-        Write-Ok "Fabric Loader instalado."
+    $conChaos = $CarpetasMods | Where-Object { Get-ChildItem $_.Ruta -Filter "*chaos*.jar" -ErrorAction SilentlyContinue }
+    if ($conChaos) {
+        Write-Ok "El mod de Chaos-Live ya esta instalado en $($conChaos.Count) instancia(s)."
     } else {
-        Write-Aviso "No se ve Fabric Loader." "Instalalo para 1.20.1 desde https://fabricmc.net/use/installer/"
+        Write-Aviso "El mod de Chaos-Live todavia no esta instalado." "Ejecuta 'Instalar-Mod-Minecraft.bat' cuando lo hayas compilado."
+    }
+
+    $conFabricApi = $CarpetasMods | Where-Object { Get-ChildItem $_.Ruta -Filter "*fabric-api*.jar" -ErrorAction SilentlyContinue }
+    if (-not $conFabricApi) {
+        Write-Aviso "No se ve Fabric API en ninguna instancia." "Descargala para 1.20.1 de https://modrinth.com/mod/fabric-api y dejala en la carpeta de mods."
+    } else {
+        Write-Ok "Fabric API instalada."
     }
 }
 
@@ -269,6 +312,16 @@ if ($ModJar) {
 }
 
 # -----------------------------------------------------------------------------
+if ($Rapido) {
+    # Lo llama el lanzador, que va a arrancar el servidor de verdad justo
+    # despues: repetir aqui una prueba de arranque solo alargaria la espera.
+    Write-Host ""
+    if ($script:Problemas.Count -gt 0) {
+        Write-Host "  [X] Hay $($script:Problemas.Count) problema(s) que impediran arrancar." -ForegroundColor Red
+    }
+    exit 0
+}
+
 Write-Titulo "7 de 7  Prueba de arranque"
 # -----------------------------------------------------------------------------
 # Todo lo anterior puede estar bien y el servidor no levantar igualmente. Se
@@ -344,8 +397,7 @@ if ($script:Problemas.Count -gt 0) {
 
         # Comprobar que ademas GUARDA. Es el fallo que mas caro sale porque no da
         # ningun error: la app funciona, el directo va, y al terminar resulta que
-        # el historial esta vacio. Se deja correr la simulacion unos segundos y se
-        # mira si algo llego al historial.
+        # el historial esta vacio.
         if ($guardaEnDisco) {
             Write-Ok "La base de datos guarda correctamente (historial y metas)."
         } else {
