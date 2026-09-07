@@ -66,6 +66,38 @@ el de `packages/overlay/dist/assets/` — si no coincide, has empaquetado un bui
 
 Para ver el HUD renderizado desde el paquete, usa la skill `overlay-preview`.
 
+## Probar la instalacion como el streamer
+
+No basta con que el ZIP se construya: hay que descomprimirlo en una carpeta
+limpia y ejecutar el instalador, porque comprueba cosas que solo fallan en un
+equipo virgen.
+
+```powershell
+$T = "$env:TEMP\chaos-instalacion-limpia"
+Remove-Item $T -Recurse -Force -ErrorAction SilentlyContinue
+New-Item -ItemType Directory -Path $T -Force | Out-Null
+tar.exe -x -f release\Chaos-Live-vX.Y.Z-Windows.zip -C $T
+"" | powershell -NoProfile -ExecutionPolicy Bypass -File "$T\Instalar-Chaos-Live.ps1"
+```
+
+Los 7 pasos deben salir en verde salvo los avisos propios de la maquina (que no
+haya Minecraft o Java es normal en un equipo de desarrollo). El paso 7 tiene que
+confirmar las tres cosas: el servidor arranca, el overlay se sirve y **la base
+de datos guarda**.
+
+## La trampa de la base de datos
+
+`config\database-template.db` la genera el empaquetador con `prisma db push`, y
+tiene que viajar en el ZIP: la distribucion no lleva la herramienta de Prisma,
+asi que el esquema no se puede crear en el PC del streamer.
+
+Y el `DATABASE_URL` **tiene que ser absoluto**. Prisma resuelve un `file:./x.db`
+contra la carpeta del esquema, que queda grabada dentro del cliente generado al
+compilar y en el PC del streamer no existe. Con una ruta relativa la app arranca
+sin quejarse y no guarda una sola fila: los errores de escritura se tragan a
+proposito para no tumbar un directo. El lanzador convierte la ruta a absoluta;
+si tocas eso, comprueba el historial despues.
+
 ## Antes de dar la release por buena
 
 - `npm test` en verde (17 suites).

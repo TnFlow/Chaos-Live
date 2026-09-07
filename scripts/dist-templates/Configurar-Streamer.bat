@@ -40,6 +40,7 @@ echo RCON_PORT=25575 >> "%ROOT_DIR%.env"
 echo RCON_PASSWORD=%RCON_PASS% >> "%ROOT_DIR%.env"
 echo. >> "%ROOT_DIR%.env"
 echo WS_PORT=8080 >> "%ROOT_DIR%.env"
+echo OVERLAY_PORT=8081 >> "%ROOT_DIR%.env"
 echo DATABASE_URL=file:./data/chaos-live.db >> "%ROOT_DIR%.env"
 echo LOG_LEVEL=info >> "%ROOT_DIR%.env"
 

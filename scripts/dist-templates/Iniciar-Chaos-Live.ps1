@@ -45,8 +45,22 @@ if (-not (Test-Path $EnvFile) -and (Test-Path $EnvExample)) {
 # --- Carpetas de datos y logs ---
 $DataDir = Join-Path $RootDir "data"
 if (-not (Test-Path $DataDir)) { New-Item -ItemType Directory -Path $DataDir -Force | Out-Null }
+
+# La base de datos se copia de la plantilla que trae el paquete, nunca se crea
+# vacia. Un fichero de cero bytes no es una base de datos sin tablas: es nada, y
+# como los errores de escritura se tragan a proposito para no tumbar un directo,
+# el streamer no veia ni un aviso. Simplemente el historial salia siempre vacio y
+# las metas volvian a cero en cada reinicio.
 $DbFile = Join-Path $DataDir "chaos-live.db"
-if (-not (Test-Path $DbFile)) { New-Item -ItemType File -Path $DbFile -Force | Out-Null }
+$DbTemplate = Join-Path $RootDir "config\database-template.db"
+$DbNecesitaEsquema = (-not (Test-Path $DbFile)) -or ((Get-Item $DbFile -ErrorAction SilentlyContinue).Length -eq 0)
+if ($DbNecesitaEsquema -and (Test-Path $DbTemplate)) {
+    Copy-Item $DbTemplate $DbFile -Force
+    Write-Host "[INFO] Base de datos preparada en data\chaos-live.db" -ForegroundColor Yellow
+} elseif ($DbNecesitaEsquema) {
+    Write-Host "[!] Falta config\database-template.db: el historial y las metas no se guardaran." -ForegroundColor Yellow
+    Write-Host "    Ejecuta 'Instalar-Chaos-Live.bat' para revisar la instalacion." -ForegroundColor DarkGray
+}
 
 $LogDir = Join-Path $RootDir "logs"
 if (-not (Test-Path $LogDir)) { New-Item -ItemType Directory -Path $LogDir -Force | Out-Null }
@@ -55,6 +69,25 @@ $SupervisorLog = Join-Path $LogDir "lanzador.log"
 $env:NODE_ENV = "production"
 $env:STATIC_DIR = Join-Path $RootDir "overlay"
 $env:LOG_DIR = $LogDir
+
+# La ruta de la base de datos se pasa siempre absoluta.
+#
+# Prisma resuelve un `file:./algo.db` contra la carpeta del esquema, que queda
+# grabada dentro del cliente generado al compilar. En el PC del streamer esa
+# carpeta no existe, asi que un DATABASE_URL relativo apuntaba a la nada: la app
+# arrancaba sin quejarse y no guardaba una sola fila. Se respeta el valor del
+# .env solo si ya es absoluto, por si alguien quiere llevarse la base a otro
+# disco.
+$DbUrlEnv = ""
+$dbLine = Select-String -Path $EnvFile -Pattern '^\s*DATABASE_URL\s*=\s*(.+)$' -ErrorAction SilentlyContinue | Select-Object -First 1
+if ($dbLine) { $DbUrlEnv = $dbLine.Matches[0].Groups[1].Value.Trim() }
+
+if ($DbUrlEnv -match '^file:(/|[A-Za-z]:)') {
+    $env:DATABASE_URL = $DbUrlEnv
+} else {
+    # Prisma quiere barras normales incluso en Windows.
+    $env:DATABASE_URL = "file:" + ($DbFile -replace '\\', '/')
+}
 
 # Puerto: se lee del .env para que el sondeo de salud apunte al sitio correcto.
 $Port = 8080

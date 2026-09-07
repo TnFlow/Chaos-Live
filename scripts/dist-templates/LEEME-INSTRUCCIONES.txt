@@ -1,5 +1,5 @@
 =============================================================================
-  ⚡ CHAOS-LIVE v1.0.0 — PAQUETE PORTÁTIL PARA STREAMERS (WINDOWS) ⚡
+  ⚡ CHAOS-LIVE v1.1.0 — PAQUETE PORTÁTIL PARA STREAMERS (WINDOWS) ⚡
   Conecta tus directos de TikTok LIVE y Twitch en tiempo real con Minecraft
 =============================================================================
 
@@ -7,6 +7,18 @@
 Este paquete es 100% autónomo y portátil: incluye su propio runtime interno
 en la carpeta 'bin\', por lo que funciona inmediatamente en cualquier PC con
 Windows sin necesidad de instalar Node.js ni configurar terminales.
+
+-----------------------------------------------------------------------------
+0. PRIMERO DE TODO: COMPRUEBA TU PC
+-----------------------------------------------------------------------------
+Haz doble clic en "Instalar-Chaos-Live.bat" antes de nada.
+
+Revisa en un minuto que este PC tiene todo lo necesario, prepara la base de
+datos y la configuración, y arranca el servidor un momento para confirmar que
+funciona de verdad. Te dirá con claridad qué falta y cómo resolverlo.
+
+Puedes volver a ejecutarlo cuantas veces quieras: no toca nada que ya esté
+bien, y nunca borra tu historial ni tu configuración.
 
 -----------------------------------------------------------------------------
 1. INICIO RÁPIDO EN 1 CLIC

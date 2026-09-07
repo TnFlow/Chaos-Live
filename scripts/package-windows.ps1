@@ -55,6 +55,26 @@ New-Item -ItemType Directory -Force -Path "$ReleaseDir\config" | Out-Null
 Copy-Item -Force "$RootDir\packages\app\config\rules.json" "$ReleaseDir\config\rules.json"
 Copy-Item -Force "$RootDir\.env.example" "$ReleaseDir\.env.example"
 
+# La distribucion no lleva la herramienta de Prisma (pesa mas que el resto del
+# paquete junto), asi que el esquema de la base de datos no se puede crear en el
+# PC del streamer. Viaja ya creada y vacia: el instalador la copia a data\.
+#
+# Sin esto, el lanzador creaba un fichero de cero bytes, que para SQLite no es
+# una base de datos sin tablas sino nada en absoluto. La app no se caia (los
+# errores de escritura se tragan a proposito para no tumbar un directo), pero no
+# guardaba nada: historial siempre vacio y metas a cero en cada reinicio, sin un
+# solo mensaje de error.
+Write-Host ">>> Building database template..." -ForegroundColor Cyan
+$DbTemplate = Join-Path $ReleaseDir "config\database-template.db"
+if (Test-Path $DbTemplate) { Remove-Item $DbTemplate -Force }
+$PrismaSchema = Join-Path $RootDir "packages\core\prisma\schema.prisma"
+$env:DATABASE_URL = "file:$DbTemplate"
+& node (Join-Path $RootDir "node_modules\prisma\build\index.js") db push --skip-generate --accept-data-loss --schema=$PrismaSchema | Out-Null
+Remove-Item Env:\DATABASE_URL -ErrorAction SilentlyContinue
+if (-not (Test-Path $DbTemplate)) {
+    throw "No se pudo crear config\database-template.db. Sin ella la distribucion no persiste nada."
+}
+
 # El bundle marca @prisma/client como externo, asi que el cliente generado (con
 # su motor de consultas nativo) tiene que viajar en la distribucion. Sin esto el
 # servidor arranca y muere al primer acceso a la base de datos.
