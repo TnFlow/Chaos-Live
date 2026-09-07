@@ -19,7 +19,7 @@ import type {
 } from '@chaos-live/shared-protocol';
 import { loadConfig } from './config/config.js';
 import { loadOverlaySettings, saveOverlaySettings } from './config/overlay-settings.js';
-import { WebSocketHub } from './server.js';
+import { WebSocketHub, StartupError } from './server.js';
 import { handleApiRequest } from './api/router.js';
 import type { OverlaySettingsStore } from './api/router.js';
 import { HybridGameAdapter } from './adapters/hybrid-game-adapter.js';
@@ -72,6 +72,12 @@ class ConsoleGameAdapter implements GameAdapter {
     return this.connected;
   }
 }
+
+/**
+ * Código de salida para un fallo de arranque que no se arregla reintentando.
+ * El lanzador de Windows lo reconoce y deja de insistir.
+ */
+export const FATAL_STARTUP_EXIT_CODE = 78;
 
 async function bootstrap(): Promise<void> {
   const config = loadConfig();
@@ -452,6 +458,20 @@ async function bootstrap(): Promise<void> {
     logger.info('Chaos-Live pipeline is ACTIVE and processing events.');
   } catch (err) {
     logger.fatal({ err }, 'Failed to start Chaos-Live pipeline');
+
+    // Un fallo que reintentar no arregla (puerto ocupado, permisos) sale con un
+    // código propio: el lanzador lo lee y para, en vez de repetir diez veces la
+    // misma caída y dejar al streamer con un panel que no carga.
+    if (err instanceof StartupError) {
+      console.error('');
+      console.error('  Chaos-Live no pudo arrancar.');
+      console.error(`  ${err.message}`);
+      console.error(`  ${err.hint}`);
+      console.error('');
+      void shutdown('startup_failure', FATAL_STARTUP_EXIT_CODE);
+      return;
+    }
+
     void shutdown('startup_failure', 1);
   }
 }

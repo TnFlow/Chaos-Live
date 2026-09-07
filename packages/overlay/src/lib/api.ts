@@ -28,7 +28,12 @@ export class ApiError extends Error {
 
   /** Mensaje listo para enseñar al usuario, con el detalle si lo hay. */
   get userMessage(): string {
-    return this.details.length > 0 ? this.details.join(' ') : this.message;
+    // El detalle técnico acompaña, nunca sustituye. Cuando el servidor no
+    // responde, el único detalle es el texto del navegador ("NetworkError when
+    // attempting to fetch"), y eso era lo único que veía el streamer en el
+    // panel: ni le explica qué pasa ni qué hacer.
+    if (this.status === 0 || this.details.length === 0) return this.message;
+    return `${this.message} ${this.details.join(' ')}`;
   }
 }
 

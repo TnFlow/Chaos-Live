@@ -1,5 +1,5 @@
 import { WebSocket } from 'ws';
-import { WebSocketHub } from '../src/server.js';
+import { WebSocketHub, StartupError } from '../src/server.js';
 import type { ChaosEvent } from '@chaos-live/shared-protocol';
 
 describe('WebSocketHub', () => {
@@ -80,5 +80,44 @@ describe('WebSocketHub', () => {
     expect(broadcastMsg.payload.metadata.giftName).toBe('Lion');
 
     ws.close();
+  });
+});
+
+
+describe('WebSocketHub con el puerto ocupado', () => {
+  const testPort = 9877;
+  let ocupante: WebSocketHub;
+
+  beforeEach(async () => {
+    ocupante = new WebSocketHub({ port: testPort });
+    await ocupante.start();
+  });
+
+  afterEach(async () => {
+    await ocupante.stop();
+  });
+
+  /**
+   * `ws` reemite el 'error' del servidor HTTP en el WebSocketServer. Sin un
+   * listener ahi, ese reenvio lanzaba y el EADDRINUSE salia como excepcion no
+   * capturada: el proceso moria con codigo 1 antes de llegar a nuestro
+   * manejador, y el lanzador reintentaba diez veces la misma caida.
+   */
+  it('rechaza con un error explicable en vez de tumbar el proceso', async () => {
+    const segundo = new WebSocketHub({ port: testPort });
+
+    await expect(segundo.start()).rejects.toBeInstanceOf(StartupError);
+    await segundo.stop();
+  });
+
+  it('el error dice el puerto y que hacer', async () => {
+    const segundo = new WebSocketHub({ port: testPort });
+
+    const err = await segundo.start().catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(StartupError);
+    expect((err as StartupError).message).toContain(String(testPort));
+    expect((err as StartupError).hint).toContain('.env');
+
+    await segundo.stop();
   });
 });

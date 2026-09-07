@@ -10,6 +10,55 @@ import { logger } from './logger.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+/**
+ * Error de arranque que el streamer puede resolver por su cuenta.
+ *
+ * `main.ts` lo distingue de un fallo cualquiera para salir con un código que el
+ * lanzador entiende como "no reintentes, esto no se arregla solo".
+ */
+export class StartupError extends Error {
+  constructor(
+    message: string,
+    /** Qué puede hacer el streamer, en una línea. */
+    readonly hint: string,
+    override readonly cause?: unknown,
+  ) {
+    super(message);
+    this.name = 'StartupError';
+  }
+}
+
+/** Traduce un fallo de `listen` a algo que se pueda leer sin ser programador. */
+function describeListenError(err: Error, host: string, port: number): Error {
+  const code = (err as NodeJS.ErrnoException).code;
+
+  if (code === 'EADDRINUSE') {
+    return new StartupError(
+      `El puerto ${port} ya está ocupado por otro programa.`,
+      `Lo más probable es que ya tengas otra ventana de Chaos-Live abierta: ciérrala y vuelve a abrir una sola. Si no es eso, cambia WS_PORT (y OVERLAY_PORT) en el archivo .env.`,
+      err,
+    );
+  }
+
+  if (code === 'EACCES') {
+    return new StartupError(
+      `Windows no deja abrir el puerto ${port}.`,
+      `Elige otro puerto por encima de 1024 en WS_PORT dentro del archivo .env.`,
+      err,
+    );
+  }
+
+  if (code === 'EADDRNOTAVAIL') {
+    return new StartupError(
+      `La dirección ${host} no existe en este equipo.`,
+      `Deja HOST=127.0.0.1 en el archivo .env salvo que sepas qué interfaz quieres usar.`,
+      err,
+    );
+  }
+
+  return err;
+}
+
 export type ClientType = 'overlay' | 'mod' | 'unknown';
 
 export interface ConnectedClient {
@@ -104,19 +153,41 @@ export class WebSocketHub {
 
   public async start(): Promise<void> {
     return new Promise((resolve, reject) => {
+      let settled = false;
+
+      // Un fallo de `listen` (típicamente EADDRINUSE) llega hasta aquí, no al
+      // manejador global: se traduce a un rechazo con mensaje entendible y a
+      // partir de ahí manda `main.ts`, que decide cómo abortar el arranque.
+      const fail = (err: Error): void => {
+        if (settled) {
+          logger.error({ err, port: this.port }, 'HTTP/WebSocket Server error');
+          return;
+        }
+        settled = true;
+        reject(describeListenError(err, this.host, this.port));
+      };
+
       this.server = http.createServer((req, res) => {
         void this.routeHttpRequest(req, res);
       });
 
       this.wss = new WebSocketServer({ server: this.server });
 
+      // `ws` engancha su propio listener de 'error' en el servidor HTTP y lo
+      // reemite en el WebSocketServer. Un EventEmitter sin listener de 'error'
+      // *lanza*, así que ese reenvío abortaba el `emit` del servidor antes de
+      // llegar a nuestro manejador: el puerto ocupado salía como excepción no
+      // capturada y el proceso moría con código 1 sin decir por qué.
+      this.wss.on('error', (err) => {
+        fail(err);
+      });
+
       this.wss.on('connection', (socket, request) => {
         this.handleConnection(socket, request);
       });
 
       this.server.on('error', (err) => {
-        logger.error({ err, port: this.port }, 'HTTP/WebSocket Server error');
-        reject(err);
+        fail(err);
       });
 
       this.server.listen(this.port, this.host, () => {
@@ -129,6 +200,7 @@ export class WebSocketHub {
             'El servidor escucha en todas las interfaces de red. La API de gestión NO tiene autenticación: usa HOST=127.0.0.1 salvo que sepas lo que haces.',
           );
         }
+        settled = true;
         resolve();
       });
     });
