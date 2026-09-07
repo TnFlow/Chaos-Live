@@ -41,8 +41,8 @@ class FalsaConexion {
   }
 }
 
-jest.unstable_mockModule('tiktok-live-connector/legacy', () => ({
-  WebcastPushConnection: FalsaConexion,
+jest.unstable_mockModule('tiktok-live-connector', () => ({
+  TikTokLiveConnection: FalsaConexion,
 }));
 
 const { TikTokAdapter } = await import('../src/TikTokAdapter.js');
@@ -140,5 +140,87 @@ describe('TikTokAdapter con el streamer fuera de directo', () => {
 
     expect(recibidos).toContain('Fallo al leer la sala');
     expect(recibidos).not.toContain('[object Object]');
+  });
+});
+
+
+/**
+ * De extremo a extremo dentro del adapter: entran los mensajes tal y como los
+ * entrega el cliente actual y se comprueba que salen ChaosEvents con lo que el
+ * espectador hizo de verdad. Es la prueba que faltaba: el normalizador podia
+ * estar bien y el adapter seguir enganchado a la capa `legacy`, que destruye
+ * los datos del regalo antes de que nadie los lea.
+ */
+describe('TikTokAdapter con los mensajes del cliente actual', () => {
+  const usuario = { idStr: '4242', displayId: 'diana_mc', nickname: 'Diana' };
+
+  beforeEach(() => {
+    conexionesCreadas.length = 0;
+    FalsaConexion.seguirOffline = false;
+  });
+
+  async function adapterConectado() {
+    const adapter = new TikTokAdapter({
+      uniqueId: 'streamer',
+      reconnect: { enabled: false },
+      likes: { quietMs: 1000 },
+    });
+    const recibidos: any[] = [];
+    adapter.onEvent((e) => recibidos.push(e));
+    await adapter.connect();
+    return { adapter, recibidos, conn: conexionesCreadas[0]! };
+  }
+
+  it('un comentario llega con su texto, no con uno inventado', async () => {
+    const { recibidos, conn } = await adapterConectado();
+
+    conn.emitir('chat', { user: usuario, content: 'vamos a por el warden' });
+
+    expect(recibidos).toHaveLength(1);
+    expect(recibidos[0].type).toBe('comment');
+    expect(recibidos[0].metadata.text).toBe('vamos a por el warden');
+    expect(recibidos[0].user.displayName).toBe('Diana');
+  });
+
+  /**
+   * Seis rosas son UN regalo de seis, no seis regalos. La racha manda una
+   * emision por pulsacion y solo la ultima trae el total.
+   */
+  it('seis rosas son un solo evento con repeatCount 6', async () => {
+    const { recibidos, conn } = await adapterConectado();
+    const rosa = { id: '5655', name: 'Rose', diamondCount: 1, type: 1 };
+
+    for (let i = 1; i <= 5; i++) {
+      conn.emitir('gift', { user: usuario, giftId: '5655', repeatCount: i, repeatEnd: 0, gift: rosa });
+    }
+    conn.emitir('gift', { user: usuario, giftId: '5655', repeatCount: 6, repeatEnd: 1, gift: rosa });
+
+    expect(recibidos).toHaveLength(1);
+    expect(recibidos[0].type).toBe('gift');
+    expect(recibidos[0].metadata.giftName).toBe('Rose');
+    expect(recibidos[0].metadata.repeatCount).toBe(6);
+    expect(recibidos[0].value).toBe(6);
+  });
+
+  it('los me gusta se acumulan y salen con el numero real', async () => {
+    jest.useFakeTimers();
+    try {
+      const { recibidos, conn } = await adapterConectado();
+
+      conn.emitir('like', { user: usuario, count: 10, total: '100' });
+      conn.emitir('like', { user: usuario, count: 15, total: '115' });
+      conn.emitir('like', { user: usuario, count: 5, total: '120' });
+
+      expect(recibidos).toHaveLength(0);
+
+      jest.advanceTimersByTime(1200);
+
+      expect(recibidos).toHaveLength(1);
+      expect(recibidos[0].type).toBe('like');
+      expect(recibidos[0].value).toBe(30);
+      expect(recibidos[0].metadata.likeCount).toBe(30);
+    } finally {
+      jest.useRealTimers();
+    }
   });
 });

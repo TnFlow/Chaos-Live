@@ -12,10 +12,80 @@ import type {
   ViewerCountMetadata,
 } from '@chaos-live/shared-protocol';
 
+/**
+ * Los eventos de TikTok llegan en dos formas distintas.
+ *
+ * El cliente antiguo aplanaba cada mensaje y renombraba los campos
+ * (`comment`, `likeCount`, `giftName`). El cliente actual entrega el mensaje
+ * protobuf tal cual, con otros nombres (`content`, `count`) y los datos del
+ * regalo dentro de `gift`. Este módulo lee las dos, así que da igual por cuál
+ * llegue el evento y una actualización de la librería no vuelve a dejar el
+ * overlay mostrando "dijo hola" y "Unknown Gift".
+ */
+
+/** Primer texto no vacío. El protobuf usa '' para lo que no viene. */
+function primerTexto(...valores: unknown[]): string | undefined {
+  for (const v of valores) {
+    if (typeof v === 'string' && v.trim() !== '') return v;
+    if (typeof v === 'number' && Number.isFinite(v)) return String(v);
+  }
+  return undefined;
+}
+
+/** Primer número utilizable, ignorando lo que no lo sea. */
+function primerNumero(...valores: unknown[]): number | undefined {
+  for (const v of valores) {
+    if (typeof v === 'number' && Number.isFinite(v)) return v;
+    if (typeof v === 'string' && v.trim() !== '') {
+      const n = Number(v);
+      if (Number.isFinite(n)) return n;
+    }
+  }
+  return undefined;
+}
+
+function objeto(valor: unknown): Record<string, unknown> | undefined {
+  return valor && typeof valor === 'object' ? (valor as Record<string, unknown>) : undefined;
+}
+
 function extractUser(data: Record<string, unknown>): StreamUser {
-  const id = String(data['userId'] ?? data['uniqueId'] ?? 'unknown_user');
-  const displayName = String(data['nickname'] ?? data['uniqueId'] ?? 'Anonymous');
+  // `user` anidado en la forma nueva; campos sueltos en la aplanada.
+  const u = objeto(data['user']);
+
+  const id =
+    primerTexto(data['userId'], u?.['idStr'], u?.['id'], data['uniqueId'], u?.['displayId']) ??
+    'unknown_user';
+
+  const displayName =
+    primerTexto(data['nickname'], u?.['nickname'], data['uniqueId'], u?.['displayId']) ??
+    'Anonymous';
+
   return { id, displayName };
+}
+
+/**
+ * Datos del regalo, vengan sueltos o dentro de `gift`.
+ *
+ * Ojo con la capa `legacy` del conector: sustituye `gift` por un objeto propio
+ * (`{gift_id, repeat_count, repeat_end, gift_type}`) que ya no lleva ni el
+ * nombre ni los diamantes. Por eso se leen las dos variantes y se acepta que
+ * falte cualquiera de ellas.
+ */
+function datosDelRegalo(data: Record<string, unknown>): {
+  name?: string;
+  id?: number;
+  diamonds?: number;
+  type?: number;
+} {
+  const g = objeto(data['gift']);
+  const detalles = objeto(data['giftDetails']);
+
+  return {
+    name: primerTexto(data['giftName'], g?.['name'], detalles?.['giftName']),
+    id: primerNumero(data['giftId'], g?.['id'], g?.['gift_id'], detalles?.['giftId']),
+    diamonds: primerNumero(data['diamondCount'], g?.['diamondCount'], detalles?.['diamondCount']),
+    type: primerNumero(data['giftType'], g?.['type'], g?.['gift_type'], detalles?.['giftType']),
+  };
 }
 
 /**
@@ -33,21 +103,34 @@ function extractUser(data: Record<string, unknown>): StreamUser {
  * emiten siempre.
  */
 export function shouldEmitGift(data: Record<string, unknown>): boolean {
-  const giftType = Number(data['giftType'] ?? 0);
+  const giftType = datosDelRegalo(data).type;
+
+  // Sin saber el tipo no se puede filtrar una racha. Se emite, que como mucho
+  // duplica, en vez de callar un regalo que el espectador ha pagado.
+  //
+  // Antes esto pasaba siempre: el tipo se leia solo de `data.giftType`, que la
+  // forma nueva no trae, asi que `Number(undefined ?? 0)` daba 0 y toda racha
+  // se emitia entera. Seis rosas entraban como seis regalos sueltos.
+  if (giftType === undefined) {
+    return true;
+  }
+
   if (giftType !== 1) {
     return true;
   }
+
   return data['repeatEnd'] === true || data['repeatEnd'] === 1;
 }
 
 export function normalizeGift(data: Record<string, unknown>): ChaosEvent<'gift'> {
   const user = extractUser(data);
-  const giftName = String(data['giftName'] ?? 'Unknown Gift');
-  const giftId = Number(data['giftId'] ?? 0);
-  const repeatCount = Number(data['repeatCount'] ?? 1);
+  const regalo = datosDelRegalo(data);
+  const giftName = regalo.name ?? 'Unknown Gift';
+  const giftId = regalo.id ?? 0;
+  const repeatCount = primerNumero(data['repeatCount'], data['comboCount']) ?? 1;
   // Si TikTok no manda `diamondCount`, deducirlo del catálogo antes de caer al
   // valor 1, que infravaloraría los regalos caros.
-  const rawDiamondCount = Number(data['diamondCount'] ?? 0);
+  const rawDiamondCount = regalo.diamonds ?? 0;
   const diamondCount = rawDiamondCount > 0 ? rawDiamondCount : (getGiftCoins(giftName) ?? 1);
 
   // Economic value is diamond count * streak count
@@ -74,7 +157,10 @@ export function normalizeGift(data: Record<string, unknown>): ChaosEvent<'gift'>
 
 export function normalizeLike(data: Record<string, unknown>): ChaosEvent<'like'> {
   const user = extractUser(data);
-  const likeCount = Number(data['likeCount'] ?? 1);
+  // `likeCount` en la forma aplanada, `count` en la nueva. Leyendo solo el
+  // primero, cada tanda de "me gusta" contaba como uno y el recuento del
+  // overlay no se parecia en nada al de TikTok.
+  const likeCount = primerNumero(data['likeCount'], data['count']) ?? 1;
 
   const metadata: LikeMetadata = {
     likeCount,
@@ -94,7 +180,10 @@ export function normalizeLike(data: Record<string, unknown>): ChaosEvent<'like'>
 
 export function normalizeComment(data: Record<string, unknown>): ChaosEvent<'comment'> {
   const user = extractUser(data);
-  const text = String(data['comment'] ?? '').trim();
+  // `comment` en la forma aplanada, `content` en la nueva. Leyendo solo el
+  // primero el texto salia vacio siempre, y el overlay lo tapaba inventandose
+  // un "dijo hola" que el espectador no habia escrito.
+  const text = (primerTexto(data['comment'], data['content']) ?? '').trim();
 
   const metadata: CommentMetadata = {
     text,
@@ -165,7 +254,7 @@ export function normalizeSubscribe(data: Record<string, unknown>): ChaosEvent<'s
 }
 
 export function normalizeViewerCount(data: Record<string, unknown>): ChaosEvent<'viewer_count'> {
-  const viewerCount = Number(data['viewerCount'] ?? 0);
+  const viewerCount = primerNumero(data['viewerCount'], data['totalUser'], data['total']) ?? 0;
   const metadata: ViewerCountMetadata = {
     viewerCount,
   };

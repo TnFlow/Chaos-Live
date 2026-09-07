@@ -1,6 +1,18 @@
-import { WebcastPushConnection } from 'tiktok-live-connector/legacy';
+/**
+ * Se usa el cliente actual, no `tiktok-live-connector/legacy`.
+ *
+ * La capa `legacy` aplana los mensajes para parecerse a la librería de hace
+ * años, y por el camino *destruye* los datos del regalo: sustituye el objeto
+ * `gift` por uno propio con solo el id y el contador, sin nombre ni diamantes.
+ * Con eso, seis rosas llegaban como seis regalos sueltos y sin nombre. El
+ * cliente moderno entrega el mensaje intacto.
+ */
+import { EventEmitter } from 'node:events';
+import { TikTokLiveConnection } from 'tiktok-live-connector';
 import type { PlatformAdapter } from '@chaos-live/core';
 import { PlatformWaitingError, isPlatformWaitingError } from '@chaos-live/core';
+import { LikeAccumulator } from './like-accumulator.js';
+import type { LikeAccumulatorOptions } from './like-accumulator.js';
 import type { ChaosEvent } from '@chaos-live/shared-protocol';
 import {
   normalizeGift,
@@ -85,6 +97,8 @@ export interface TikTokAdapterConfig {
   reconnect?: ReconnectConfig;
   /** Circuit breaker settings. */
   circuitBreaker?: CircuitBreakerConfig;
+  /** Cómo se juntan los "me gusta" de un mismo espectador. */
+  likes?: LikeAccumulatorOptions;
 }
 
 type CircuitState = 'CLOSED' | 'OPEN' | 'HALF_OPEN';
@@ -102,7 +116,7 @@ export class TikTokAdapter implements PlatformAdapter {
   private readonly reconnectConfig: Required<ReconnectConfig>;
   private readonly circuitConfig: Required<CircuitBreakerConfig>;
 
-  private connection?: WebcastPushConnection;
+  private connection?: TikTokLiveConnection;
   private isExplicitlyDisconnected = false;
   private eventHandlers: Set<(event: ChaosEvent) => void> = new Set();
   private errorHandlers: Set<(error: Error) => void> = new Set();
@@ -111,6 +125,9 @@ export class TikTokAdapter implements PlatformAdapter {
   private circuitState: CircuitState = 'CLOSED';
   private failureCount = 0;
   private lastFailureTime = 0;
+
+  /** Junta los "me gusta" de cada espectador antes de emitirlos. */
+  private readonly likes: LikeAccumulator;
 
   // Ultimo error notificado, para no repetir el mismo aviso dos veces.
   private ultimoErrorMensaje = '';
@@ -136,6 +153,22 @@ export class TikTokAdapter implements PlatformAdapter {
       failureThreshold: config.circuitBreaker?.failureThreshold ?? 5,
       resetTimeoutMs: config.circuitBreaker?.resetTimeoutMs ?? 30000,
     };
+
+    this.likes = new LikeAccumulator((event) => this.emitEvent(event), config.likes);
+  }
+
+  /**
+   * Vista de emisor del cliente.
+   *
+   * `tiktok-live-connector` tipa su cliente con `typed-emitter`, y su mapa de
+   * eventos no supera la restriccion del propio `typed-emitter` bajo `strict`:
+   * sus manejadores devuelven `void | Promise<void>` donde se espera `void`.
+   * TypeScript descarta entonces la clase base y el cliente se queda sin `on`
+   * ni `removeAllListeners`. En ejecucion si es un EventEmitter de Node, que es
+   * lo que se usa aqui; el resto del ciclo de vida sigue con el tipo real.
+   */
+  private static comoEmisor(conn: TikTokLiveConnection): EventEmitter {
+    return conn as unknown as EventEmitter;
   }
 
   public isConnected(): boolean {
@@ -172,7 +205,7 @@ export class TikTokAdapter implements PlatformAdapter {
     try {
       this.teardownConnection();
 
-      this.connection = new WebcastPushConnection(this.uniqueId, this.clientOptions as any);
+      this.connection = new TikTokLiveConnection(this.uniqueId, this.clientOptions as never);
       this.attachListeners(this.connection);
 
       await this.connection.connect();
@@ -191,13 +224,16 @@ export class TikTokAdapter implements PlatformAdapter {
   public async disconnect(): Promise<void> {
     this.isExplicitlyDisconnected = true;
     this.clearReconnectTimer();
+    // Lo que quede a medias son toques que el espectador ya ha dado: se emiten
+    // antes de cerrar en vez de tirarlos.
+    this.likes.flushAll();
     this.teardownConnection();
   }
 
   private teardownConnection(): void {
     if (this.connection) {
       try {
-        this.connection.removeAllListeners();
+        TikTokAdapter.comoEmisor(this.connection).removeAllListeners();
         if (this.connection.isConnected) {
           void this.connection.disconnect();
         }
@@ -208,8 +244,10 @@ export class TikTokAdapter implements PlatformAdapter {
     }
   }
 
-  private attachListeners(conn: WebcastPushConnection): void {
-    conn.on('gift', (data: any) => {
+  private attachListeners(conn: TikTokLiveConnection): void {
+    const bus = TikTokAdapter.comoEmisor(conn);
+
+    bus.on('gift', (data: any) => {
       // Descartar las emisiones intermedias de una racha: TikTok repite el
       // evento mientras el espectador mantiene pulsado y solo la última trae el
       // `repeatCount` definitivo.
@@ -219,41 +257,45 @@ export class TikTokAdapter implements PlatformAdapter {
       this.emitEvent(normalizeGift(data));
     });
 
-    conn.on('like', (data: any) => {
-      this.emitEvent(normalizeLike(data));
+    bus.on('like', (data: any) => {
+      // No se emite tanda a tanda: se acumula por espectador y sale una sola
+      // vez con el total, como el contador que ve el streamer en TikTok.
+      this.likes.add(normalizeLike(data));
     });
 
-    conn.on('chat', (data: any) => {
+    bus.on('chat', (data: any) => {
       this.emitEvent(normalizeComment(data));
     });
 
-    conn.on('follow', (data: any) => {
+    bus.on('follow', (data: any) => {
       this.emitEvent(normalizeFollow(data));
     });
 
-    conn.on('share', (data: any) => {
+    bus.on('share', (data: any) => {
       this.emitEvent(normalizeShare(data));
     });
 
-    conn.on('subscribe', (data: any) => {
-      this.emitEvent(normalizeSubscribe(data));
-    });
+    for (const evento of ['subscribe', 'subNotify']) {
+      bus.on(evento as 'subscribe', (data: any) => {
+        this.emitEvent(normalizeSubscribe(data));
+      });
+    }
 
-    conn.on('roomUser', (data: any) => {
+    bus.on('roomUser', (data: any) => {
       this.emitEvent(normalizeViewerCount(data));
     });
 
-    conn.on('error', (err: unknown) => {
+    bus.on('error', (err: unknown) => {
       this.notifyError(this.clasificar(comoError(err)));
     });
 
-    conn.on('disconnected', () => {
+    bus.on('disconnected', () => {
       if (!this.isExplicitlyDisconnected) {
         this.scheduleReconnect();
       }
     });
 
-    conn.on('streamEnd', () => {
+    bus.on('streamEnd', () => {
       this.notifyError(new Error(`TikTok LIVE stream for ${this.uniqueId} has ended.`));
     });
   }

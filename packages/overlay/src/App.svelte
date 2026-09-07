@@ -608,7 +608,10 @@
         case 'comment': {
           icon = '💬';
           accentColor = currentTheme.accent1;
-          subtitle = event.metadata?.text || 'dijo hola';
+          // Nunca inventar palabras. Un comentario sin texto (solo emotes, o
+          // filtrado) se anuncia como lo que es; poner "dijo hola" ponia en boca
+          // del espectador algo que no habia escrito, delante de todo el directo.
+          subtitle = (event.metadata?.text || '').trim() || 'escribió en el chat';
           break;
         }
         case 'share': {

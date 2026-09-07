@@ -173,6 +173,42 @@
     socket?.close();
   });
 
+  /**
+   * Describe un evento en castellano llano.
+   *
+   * Antes se componia con `envió ${e.type} (${giftName || value})`, que para
+   * seis rosas escribia "envió gift (Rose)" y, si el nombre no llegaba, "envió
+   * gift (6)" — lo que se leia como seis regalos sueltos. Cada tipo tiene su
+   * frase y el numero significa lo que parece.
+   */
+  function describirEvento(e: any): string {
+    const n = Number(e?.value ?? 0);
+
+    switch (e?.type) {
+      case 'gift': {
+        const nombre = e?.metadata?.giftName || 'un regalo';
+        const veces = Number(e?.metadata?.repeatCount ?? 1);
+        return veces > 1
+          ? `envió ${veces} × ${nombre} (${n} 💎)`
+          : `envió ${nombre} (${n} 💎)`;
+      }
+      case 'like':
+        return `dio ${Number(e?.metadata?.likeCount ?? n)} me gusta`;
+      case 'comment': {
+        const texto = (e?.metadata?.text || '').trim();
+        return texto ? `comentó: "${texto}"` : 'escribió en el chat';
+      }
+      case 'follow':
+        return 'empezó a seguir el directo';
+      case 'share':
+        return 'compartió el directo';
+      case 'subscribe':
+        return 'se suscribió';
+      default:
+        return `envió un evento de tipo ${e?.type ?? 'desconocido'}`;
+    }
+  }
+
   function handlePacket(msg: { type: string; payload?: unknown }) {
     const time = new Date().toLocaleTimeString();
 
@@ -183,7 +219,7 @@
           id: e.id,
           time,
           type: e.type,
-          text: `[${e.platform?.toUpperCase() || 'DIRECTO'}] ${e.user?.displayName || 'Alguien'} envió ${e.type} (${e.metadata?.giftName || e.value})`,
+          text: `[${e.platform?.toUpperCase() || 'DIRECTO'}] ${e.user?.displayName || 'Alguien'} ${describirEvento(e)}`,
         },
         ...liveEvents.slice(0, 49),
       ];

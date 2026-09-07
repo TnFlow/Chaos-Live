@@ -180,3 +180,90 @@ describe('TikTok Normalizer', () => {
     expect(event.value).toBe(420);
   });
 });
+
+
+/**
+ * Forma que entrega el cliente actual de tiktok-live-connector: el mensaje
+ * protobuf tal cual, sin aplanar. Los nombres son otros (`content` en vez de
+ * `comment`, `count` en vez de `likeCount`) y los datos del regalo viven
+ * dentro de `gift`. Leyendo solo los nombres antiguos, el overlay mostraba
+ * "dijo hola" en cada comentario y "Unknown Gift" en cada regalo.
+ */
+describe('Normalizador con los eventos del cliente actual', () => {
+  const usuario = {
+    idStr: '99887766',
+    displayId: 'rosa_fan',
+    nickname: 'Rosa Fan',
+  };
+
+  it('lee el texto real del comentario desde `content`', () => {
+    const evento = normalizeComment({
+      user: usuario,
+      content: 'que buena partida',
+    });
+
+    expect(evento.metadata.text).toBe('que buena partida');
+    expect(evento.user.displayName).toBe('Rosa Fan');
+    expect(evento.user.id).toBe('99887766');
+  });
+
+  it('no se inventa texto cuando el comentario viene vacío', () => {
+    const evento = normalizeComment({ user: usuario, content: '' });
+    expect(evento.metadata.text).toBe('');
+  });
+
+  it('saca nombre y diamantes del regalo desde `gift`', () => {
+    const evento = normalizeGift({
+      user: usuario,
+      giftId: '5655',
+      repeatCount: 6,
+      repeatEnd: 1,
+      gift: { id: '5655', name: 'Rose', diamondCount: 1, type: 1 },
+    });
+
+    expect(evento.metadata.giftName).toBe('Rose');
+    expect(evento.metadata.repeatCount).toBe(6);
+    expect(evento.metadata.diamondCount).toBe(1);
+    // Seis rosas son un regalo de seis, no seis regalos.
+    expect(evento.value).toBe(6);
+  });
+
+  /**
+   * El tipo de regalo vive en `gift.type`. Leyéndolo solo de `data.giftType`
+   * salía `undefined`, se tomaba como 0 y ninguna racha se filtraba: las seis
+   * pulsaciones de una racha de seis rosas entraban como seis regalos.
+   */
+  it('filtra las emisiones intermedias de una racha', () => {
+    const enCurso = {
+      user: usuario,
+      repeatCount: 3,
+      repeatEnd: 0,
+      gift: { id: '5655', name: 'Rose', diamondCount: 1, type: 1 },
+    };
+    const definitiva = { ...enCurso, repeatCount: 6, repeatEnd: 1 };
+
+    expect(shouldEmitGift(enCurso)).toBe(false);
+    expect(shouldEmitGift(definitiva)).toBe(true);
+  });
+
+  it('emite siempre los regalos que no admiten racha', () => {
+    expect(
+      shouldEmitGift({
+        user: usuario,
+        repeatEnd: 0,
+        gift: { id: '5269', name: 'Lion', diamondCount: 29999, type: 2 },
+      }),
+    ).toBe(true);
+  });
+
+  it('lee la cantidad de "me gusta" desde `count`', () => {
+    const evento = normalizeLike({ user: usuario, count: 12, total: '340' });
+
+    expect(evento.metadata.likeCount).toBe(12);
+    expect(evento.value).toBe(12);
+  });
+
+  it('lee el aforo desde `totalUser`', () => {
+    expect(normalizeViewerCount({ totalUser: '1420', total: '1420' }).value).toBe(1420);
+  });
+});
