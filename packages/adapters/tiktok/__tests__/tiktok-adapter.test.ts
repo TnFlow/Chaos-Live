@@ -68,7 +68,8 @@ describe('TikTokAdapter con el streamer fuera de directo', () => {
     });
 
     for (let i = 0; i < 5; i++) {
-      await expect(adapter.connect()).rejects.toThrow(/isn't online/);
+      const err = await adapter.connect().catch((e: unknown) => e);
+      expect(isPlatformWaitingError(err)).toBe(true);
     }
 
     expect(adapter.getCircuitState()).toBe('CLOSED');
@@ -83,7 +84,7 @@ describe('TikTokAdapter con el streamer fuera de directo', () => {
         reconnect: { enabled: true, offlinePollMs: 1000 },
       });
 
-      await expect(adapter.connect()).rejects.toThrow(/isn't online/);
+      await expect(adapter.connect()).rejects.toThrow(/no está en directo/);
       expect(adapter.isConnected()).toBe(false);
 
       // El streamer le da a "empezar directo".
@@ -113,9 +114,11 @@ describe('TikTokAdapter con el streamer fuera de directo', () => {
 
     await expect(adapter.connect()).rejects.toThrow();
 
+    // Una sola vez, aunque el fallo entre por las dos vias.
     expect(recibidos).toHaveLength(1);
     expect(isPlatformWaitingError(recibidos[0])).toBe(true);
     expect(recibidos[0]?.message).toContain('quien_sea');
+    expect(recibidos[0]?.message).not.toContain("isn't online");
   });
 
   /**

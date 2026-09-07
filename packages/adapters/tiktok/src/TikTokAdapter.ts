@@ -1,6 +1,6 @@
 import { WebcastPushConnection } from 'tiktok-live-connector/legacy';
 import type { PlatformAdapter } from '@chaos-live/core';
-import { PlatformWaitingError } from '@chaos-live/core';
+import { PlatformWaitingError, isPlatformWaitingError } from '@chaos-live/core';
 import type { ChaosEvent } from '@chaos-live/shared-protocol';
 import {
   normalizeGift,
@@ -182,7 +182,7 @@ export class TikTokAdapter implements PlatformAdapter {
       this.failureCount = 0;
       this.reconnectAttempts = 0;
     } catch (err) {
-      const error = comoError(err);
+      const error = this.clasificar(comoError(err));
       this.handleConnectionFailure(error);
       throw error;
     }
@@ -244,7 +244,7 @@ export class TikTokAdapter implements PlatformAdapter {
     });
 
     conn.on('error', (err: unknown) => {
-      this.notifyError(comoError(err));
+      this.notifyError(this.clasificar(comoError(err)));
     });
 
     conn.on('disconnected', () => {
@@ -262,10 +262,12 @@ export class TikTokAdapter implements PlatformAdapter {
     // Que el streamer no haya empezado todavia no es una averia: no cuenta como
     // fallo, no abre el circuito y no gasta intentos. Solo se vuelve a mirar
     // cada cierto rato, indefinidamente, hasta que arranque el directo.
-    if (esStreamerNoEnDirecto(error)) {
-      this.notifyError(
-        new PlatformWaitingError(`@${this.uniqueId} no está en directo ahora mismo.`, error),
-      );
+    // Se comprueba tambien el tipo: para cuando llega aqui ya viene clasificado,
+    // y su mensaje ("@x no esta en directo ahora mismo") ya no contiene el texto
+    // original de la libreria. Mirando solo el texto, la espera volvia a contar
+    // como averia y el circuito se abria a los cinco intentos.
+    if (isPlatformWaitingError(error) || esStreamerNoEnDirecto(error)) {
+      this.notifyError(error);
       if (!this.isExplicitlyDisconnected && this.reconnectConfig.enabled) {
         this.scheduleRetry(this.reconnectConfig.offlinePollMs);
       }
@@ -341,6 +343,21 @@ export class TikTokAdapter implements PlatformAdapter {
         this.notifyError(err instanceof Error ? err : new Error(String(err)));
       }
     }
+  }
+
+  /**
+   * Convierte "todavia no hay directo" en el tipo que el motor distingue.
+   *
+   * Se hace en un unico sitio y lo antes posible: el mismo fallo entra por dos
+   * vias con textos distintos (el crudo de la libreria y el del catch de
+   * connect), y solo clasificando antes de comparar se puede descartar el eco.
+   * Ademas es el error que se relanza, para que quien llama a connect() reciba
+   * ya la distincion hecha.
+   */
+  private clasificar(error: Error): Error {
+    if (isPlatformWaitingError(error)) return error;
+    if (!esStreamerNoEnDirecto(error)) return error;
+    return new PlatformWaitingError(`@${this.uniqueId} no está en directo ahora mismo.`, error);
   }
 
   private notifyError(error: Error): void {

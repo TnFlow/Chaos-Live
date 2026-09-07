@@ -152,6 +152,10 @@ export class EventEngine {
       try {
         await adapter.connect();
       } catch (err) {
+        // Si el adapter ya sabe que esto es una espera, tambien lo ha avisado
+        // por su canal de errores: repetirlo aqui solo duplica la linea.
+        if (isPlatformWaitingError(err)) continue;
+
         this.emitState({
           correlationId: 'SYSTEM',
           state: 'PLATFORM_WAITING',
