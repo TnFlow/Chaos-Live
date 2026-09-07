@@ -15,7 +15,7 @@
   import type { LeaderboardEntry } from '../../lib/types';
   import type { QueuedEffect } from '../../lib/mc-live-state';
   import type { OverlaySettings } from '../../types/overlay-config';
-  import { WIDGET_COLUMN, type WidgetName } from './widgets';
+  import { WIDGET_COLUMN, type WidgetName } from '../../lib/widgets';
   import McStatusBar from './McStatusBar.svelte';
   import McGoalPanel from './McGoalPanel.svelte';
   import McSecondaryGoal from './McSecondaryGoal.svelte';

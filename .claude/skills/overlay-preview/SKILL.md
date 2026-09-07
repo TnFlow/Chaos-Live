@@ -39,8 +39,13 @@ CH="/c/Program Files/Google/Chrome/Application/chrome.exe"
 Luego **lee el PNG** con la herramienta Read. Que el fichero exista no es la verificación; la
 verificación es mirarlo.
 
-Anchos y altos de cada widget: `packages/overlay/src/overlay/minecraft/widgets.ts`.
-Sin `&widget=` sale el HUD completo, que va a 1080x1920.
+Anchos y altos de cada widget: `packages/overlay/src/lib/widgets.ts`. Hay dos juegos de
+medidas, uno por familia visual, y `widgetSize(name, theme)` devuelve el que toca.
+Sin `&widget=` sale la vista de conjunto (el HUD pixel va a 1080x1920).
+
+**Prueba siempre las dos familias.** El tema `minecraft` usa `McWidget` y los componentes
+pixel; el resto usan `GlassWidget` y los de cristal. Un cambio en el escenario compartido
+(`.widget-stage`, en overlay.css) toca a las dos, asi que captura una de cada.
 
 ## 3. Medir el alto real de un panel
 
@@ -62,8 +67,7 @@ regalos pasa de 431 a 546 px según cuántas filas traiga la página del carruse
 ## 4. Al terminar
 
 ```bash
-PID=$(netstat -ano | grep -E ":8099|:8098" | grep LISTENING | awk '{print $5}' | head -1)
-taskkill //PID $PID //T //F
+netstat -ano | grep -E ":8099|:8098" | grep LISTENING | tr -s ' ' | cut -d' ' -f6 | head -1   | xargs -r -I{} taskkill //PID {} //T //F
 ```
 
 Mata **solo** tu instancia. Si hay algo escuchando en 8080, es del usuario: no lo toques.
@@ -77,3 +81,15 @@ Mata **solo** tu instancia. Si hay algo escuchando en 8080, es del usuario: no l
 - **La capa de alertas sale vacía:** es lo correcto. Solo se pinta cuando hay una alerta viva.
 - **Aparece un engranaje encima:** los mandos de prueba se están colando; deben estar detrás de
   `!widgetMode`.
+- **Sale texto sin fondo y cortado por arriba:** el componente se diseñó para ir dentro de otro
+  panel, que era quien le ponía fondo y margen. Suelto necesita un envoltorio
+  `.glass-panel .widget-panel`, como se le hizo a la barra de meta.
+- **Sale el aviso «el widget X no existe en el tema Y»:** es correcto. Las dos familias no
+  cubren lo mismo (`queue` solo en pixel, `feed` solo en cristal); lo decide `widgetsForTheme`.
+
+## Cuidado con `--virtual-time-budget`
+
+Adelanta los temporizadores de la página, pero **no** hace que lleguen antes los eventos por
+WebSocket. Lo que viene en el handshake (reglas, metas, clasificación) sí se ve; lo que depende
+de eventos en vivo (el feed, las alertas, el contador de eventos) sale vacío en una captura
+corta. No es un fallo del widget: no intentes medir así la altura de `feed` ni la de `alert`.

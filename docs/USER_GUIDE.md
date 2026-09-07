@@ -163,9 +163,16 @@ that is safe to reach from outside.
 
 ### 5.2 Adding the widgets
 
-Open the dashboard's **Overlay Studio** tab: it lists all eight URLs with their layer size and a
-copy button. For each one, in LIVE Studio add a **Link** source, paste the URL, and set the layer
-to the size shown.
+Open the dashboard's **Overlay Studio** tab: it lists the URLs for **the theme you have
+selected**, each with its layer size and a copy button. For each one, in LIVE Studio add a
+**Link** source, paste the URL, and set the layer to the size shown.
+
+The two visual families do not cover the same panels, and the catalogue says so rather than
+serving a blank layer: **`queue` exists only in the pixel HUD** (theme `minecraft`) and **`feed`
+only in the glass themes**. Asking for a widget the theme cannot paint renders an explicit
+notice, not an empty box.
+
+**Pixel HUD (`theme=minecraft`)**
 
 | Widget | URL suffix | Layer size |
 |---|---|---|
@@ -178,15 +185,30 @@ to the size shown.
 | Alerts | `&widget=alert` | 1024 × 280 |
 | Ticker | `&widget=ticker` | 1024 × 80 |
 
-Full form of a URL: `http://127.0.0.1:8081/?view=overlay&theme=minecraft&widget=goal`
+**Glass themes (`cyberpunk`, `streamtoearn`, `obsidian`, `tiktok-rose`, `amber-sunset`)**
+
+| Widget | URL suffix | Layer size |
+|---|---|---|
+| Status bar | `&widget=status` | 560 × 110 |
+| Active goal | `&widget=goal` | 720 × 120 |
+| Secondary goal | `&widget=goal2` | 720 × 120 |
+| Rewards | `&widget=rewards` | 320 × 520 |
+| Top supporters | `&widget=leaderboard` | 320 × 320 |
+| Alerts | `&widget=alert` | 760 × 420 |
+| Ticker | `&widget=ticker` | 1200 × 100 |
+| Interaction feed | `&widget=feed` | 340 × 500 |
+
+Full form of a URL: `http://127.0.0.1:8081/?view=overlay&theme=cyberpunk&widget=goal`
 
 Sizes are **maximums with headroom**, measured in a browser with each panel full. Oversizing a
 layer costs nothing — the page is transparent and the widget anchors top-left — but a short layer
-crops the panel. The gifts menu, for instance, grows from 431 to 546 px when its carousel page
-carries four rows instead of three.
+crops the panel. The pixel gifts menu, for instance, grows from 431 to 546 px when its carousel
+page carries four rows instead of three. Two glass sizes (`alert`, `feed`) are estimates rather
+than measurements: both only paint once live events arrive.
 
-The panels paint their own opaque background, so a widget still reads correctly even if LIVE
-Studio does not honour page transparency.
+The pixel panels paint their own opaque background, so those widgets read correctly even if LIVE
+Studio does not honour page transparency. The glass panels are translucent by design, so they
+depend on it more.
 
 ### 5.3 If LIVE Studio will not load a local URL
 
@@ -196,9 +218,9 @@ API and the mod channel stay on the machine.
 
 ### 5.4 Full-screen preview
 
-`http://127.0.0.1:8081/?view=overlay&theme=minecraft` (no `widget=`) still renders the whole HUD on
-one 1080×1920 canvas. It is useful for checking the design as a whole, and works as a single OBS
-Browser Source.
+Dropping `widget=` renders the whole overlay on one canvas — the 1080×1920 pixel HUD for
+`theme=minecraft`, the classic grid layout for the glass themes. Useful for checking a design as a
+whole, and it still works as a single OBS Browser Source.
 
 ---
 

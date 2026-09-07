@@ -4,13 +4,11 @@
   import { SOUND_PRESETS, playSound, setMasterVolume, setMuted } from '../utils/sound-engine';
   import type { OverlaySettings } from '@chaos-live/shared-protocol';
   import {
-    WIDGET_COLUMN,
-    WIDGET_HEIGHT,
     WIDGET_LABEL,
-    WIDGET_NAMES,
-    WIDGET_WIDTH,
+    widgetSize,
+    widgetsForTheme,
     type WidgetName,
-  } from '../overlay/minecraft/widgets';
+  } from '../lib/widgets';
 
   /**
    * Base de las URLs del overlay.
@@ -28,7 +26,7 @@
    * cae al origen actual, que al menos da un enlace utilizable en local.
    */
   const widgetUrl = (name: WidgetName): string =>
-    `${overlayBaseUrl || overlayBase}/?view=overlay&theme=minecraft&widget=${name}`;
+    `${overlayBaseUrl || overlayBase}/?view=overlay&theme=${overlaySettings.theme}&widget=${name}`;
 
   let {
     overlaySettings = $bindable(),
@@ -69,7 +67,8 @@
       <p class="section-subtitle">
         En TikTok LIVE Studio, cada widget es su propia fuente <em>Link</em>: pega un enlace por
         capa y dale a la capa el tamaño indicado. El tamaño es un máximo con margen — pasarse no
-        rompe nada, quedarse corto recorta el panel.
+        rompe nada, quedarse corto recorta el panel. Los enlaces llevan el tema que tengas
+        elegido arriba, y la lista cambia con él: cada tema pinta los paneles que tiene.
       </p>
 
       <div class="url-cards-grid">
@@ -105,14 +104,13 @@
           </div>
         </div>
 
-        {#each WIDGET_NAMES as name (name)}
+        {#each widgetsForTheme(overlaySettings.theme) as name (name)}
           {@const url = widgetUrl(name)}
+          {@const size = widgetSize(name, overlaySettings.theme)}
           <div class="url-card">
             <div class="url-card-header">
               <span class="url-type-badge modular-badge">🧩 {WIDGET_LABEL[name]}</span>
-              <span class="res-tag">
-                {WIDGET_WIDTH[WIDGET_COLUMN[name]]} x {WIDGET_HEIGHT[name]}
-              </span>
+              <span class="res-tag">{size.width} x {size.height}</span>
             </div>
             <div class="url-input-row">
               <input type="text" readonly value={url} class="styled-input url-input" />

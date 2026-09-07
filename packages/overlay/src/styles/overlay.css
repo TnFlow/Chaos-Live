@@ -1203,3 +1203,70 @@
   border-color: rgba(0, 240, 255, 0.4) !important;
   color: #00f0ff !important;
 }
+
+/* ---------- Widget suelto (una fuente Link de TikTok LIVE Studio) ---------- */
+
+/*
+ * Cada widget es su propia pagina y por tanto su propia capa en TLS, donde se
+ * coloca y se redimensiona a mano. Por eso se ancla arriba a la izquierda y no
+ * centrado: lo que el streamer arrastra es la capa entera, y con el contenido
+ * centrado en un lienzo mas grande estaria arrastrando aire.
+ *
+ * Lo comparten las dos familias visuales, la pixel y la de cristal.
+ */
+.widget-stage {
+  position: absolute;
+  top: 0;
+  left: 0;
+  pointer-events: none;
+}
+
+/*
+ * Los paneles de cristal se colocan con la rejilla de `.overlay-root`. Sueltos
+ * no tienen rejilla, asi que el ancho se lo da el widget y la altura la marca
+ * el contenido.
+ */
+.overlay-root .glass-widget {
+  display: block;
+  transform: scale(var(--widget-scale, 1));
+  transform-origin: top left;
+}
+
+/* La cuenta del streamer en la barra de estado suelta. */
+.overlay-root .glass-widget .status-handle {
+  font-weight: 700;
+  color: var(--theme-accent-1);
+  letter-spacing: 0.04em;
+}
+
+/*
+ * Sueltos, estos paneles no deben heredar el posicionamiento que tenian dentro
+ * de la rejilla: el feed se anclaba a un lado y la alerta al centro de la
+ * pantalla, y como capa propia eso los sacaba fuera de la capa.
+ */
+.overlay-root .glass-widget .event-feed-container,
+.overlay-root .glass-widget .grand-alert-wrapper,
+.overlay-root .glass-widget .celebration-overlay {
+  position: static;
+  width: 100%;
+  height: auto;
+  transform: none;
+  inset: auto;
+}
+
+/* Aviso de widget inexistente en el tema elegido. */
+.widget-missing {
+  padding: 14px 18px;
+  font-family: 'Outfit', system-ui, sans-serif;
+  font-size: 15px;
+  color: #f0526a;
+  background: rgba(15, 10, 12, 0.92);
+  border: 2px solid rgba(240, 82, 106, 0.5);
+  border-radius: 8px;
+}
+
+/* Panel que se le pone a un widget cuyo componente no trae fondo propio. */
+.overlay-root .glass-widget .widget-panel {
+  padding: 14px 20px;
+  border-radius: 14px;
+}

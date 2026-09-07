@@ -19,6 +19,16 @@ describe('Persistencia de los ajustes del overlay', () => {
     process.cwd = () => dir;
   };
 
+  /**
+   * Directorio de modulo para la busqueda, apuntado dentro del sandbox.
+   *
+   * El ultimo candidato se resuelve desde `__dirname`, que en el monorepo cae en
+   * `packages/app/config/`. Ahi es justo donde la app deja su
+   * `overlay-settings.json` al arrancar, asi que con el valor real estos tests
+   * pasaban solo mientras nadie hubiera ejecutado la app en esa maquina.
+   */
+  const sandboxModuleDir = (): string => path.join(sandbox, 'no-existe', 'src', 'config');
+
   beforeEach(() => {
     sandbox = fs.mkdtempSync(path.join(os.tmpdir(), 'chaos-live-overlay-'));
   });
@@ -33,7 +43,7 @@ describe('Persistencia de los ajustes del overlay', () => {
     fs.mkdirSync(path.join(sandbox, 'config'));
     pretendCwdIs(sandbox);
 
-    const resolved = getOverlaySettingsPath();
+    const resolved = getOverlaySettingsPath(undefined, sandboxModuleDir());
 
     expect(resolved).toBe(path.resolve(sandbox, 'config/overlay-settings.json'));
     expect(resolved).not.toContain(`packages${path.sep}app`);
@@ -44,7 +54,7 @@ describe('Persistencia de los ajustes del overlay', () => {
     fs.mkdirSync(path.join(sandbox, 'config'));
     pretendCwdIs(sandbox);
 
-    expect(getOverlaySettingsPath()).toBe(
+    expect(getOverlaySettingsPath(undefined, sandboxModuleDir())).toBe(
       path.resolve(sandbox, 'packages/app/config/overlay-settings.json'),
     );
   });

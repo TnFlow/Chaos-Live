@@ -814,19 +814,6 @@
 
 /* ---------- Widget suelto (una fuente Link de TikTok LIVE Studio) ---------- */
 
-/*
- * Cada widget es su propia pagina y por tanto su propia capa en TLS, donde se
- * coloca y se redimensiona a mano. Por eso se ancla arriba a la izquierda y no
- * centrado: lo que el streamer arrastra es la capa entera, y con el contenido
- * centrado en un lienzo mas grande estaria arrastrando aire.
- */
-.mc-widget-stage {
-  position: absolute;
-  top: 0;
-  left: 0;
-  pointer-events: none;
-}
-
 .mc-widget {
   font-family: 'Outfit', system-ui, sans-serif;
   transform: scale(var(--mc-widget-scale, 1));

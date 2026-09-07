@@ -14,7 +14,18 @@ const SETTINGS_FILENAME = 'overlay-settings.json';
  * multi-ruta que `getRulesPath` para funcionar tanto en el monorepo como en la
  * distribución portable de Windows.
  */
-export function getOverlaySettingsPath(settingsFilePath?: string): string {
+export function getOverlaySettingsPath(
+  settingsFilePath?: string,
+  /**
+   * Directorio desde el que se resuelve el ultimo candidato, el que no depende
+   * del directorio de trabajo. Existe como parametro solo para poder probar la
+   * busqueda: `__dirname` apunta al repo, asi que en cuanto alguien arrancaba
+   * la app una vez, el `overlay-settings.json` que esta deja en
+   * `packages/app/config/` ganaba y los tests de esta funcion fallaban en su
+   * maquina. En produccion nadie lo pasa y el comportamiento es el de siempre.
+   */
+  moduleDir: string = __dirname,
+): string {
   if (settingsFilePath) {
     return path.isAbsolute(settingsFilePath)
       ? settingsFilePath
@@ -24,7 +35,7 @@ export function getOverlaySettingsPath(settingsFilePath?: string): string {
   const possiblePaths = [
     path.resolve(process.cwd(), `packages/app/config/${SETTINGS_FILENAME}`),
     path.resolve(process.cwd(), `config/${SETTINGS_FILENAME}`),
-    path.resolve(__dirname, `../../config/${SETTINGS_FILENAME}`),
+    path.resolve(moduleDir, `../../config/${SETTINGS_FILENAME}`),
   ];
 
   for (const p of possiblePaths) {

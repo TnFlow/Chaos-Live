@@ -12,7 +12,8 @@
   import MarqueeTicker from './overlay/MarqueeTicker.svelte';
   import MinecraftHud from './overlay/minecraft/MinecraftHud.svelte';
   import McWidget from './overlay/minecraft/McWidget.svelte';
-  import { isWidgetName, type WidgetName } from './overlay/minecraft/widgets';
+  import GlassWidget from './overlay/GlassWidget.svelte';
+  import { isWidgetName, widgetExistsInTheme, type WidgetName } from './lib/widgets';
   import { connectChaosSocket, type ChaosSocket } from './lib/ws-client';
   import {
     enqueueEffect,
@@ -941,8 +942,16 @@
     </div>
   {/if}
 
-  <!-- Un widget suelto: una fuente Link de TikTok LIVE Studio por panel -->
-  {#if widgetMode}
+  <!-- Un widget suelto: una fuente Link de TikTok LIVE Studio por panel.
+       Cada familia visual tiene su propio renderizador; el catalogo
+       (`lib/widgets.ts`) decide cual sabe pintar cada widget. -->
+  {#if widgetMode && !widgetExistsInTheme(widgetMode, overlaySettings.theme)}
+    <!-- Un widget que este tema no tiene. Se dice, en vez de dejar la capa en
+         blanco y que el streamer lo descubra en directo. -->
+    <div class="widget-stage widget-missing">
+      El widget «{widgetMode}» no existe en el tema «{overlaySettings.theme}».
+    </div>
+  {:else if widgetMode && useMinecraftHud}
     <McWidget
       name={widgetMode}
       settings={overlaySettings}
@@ -957,6 +966,22 @@
       {recentActions}
       {activeAlert}
       {celebratingGoal}
+    />
+  {:else if widgetMode}
+    <GlassWidget
+      name={widgetMode}
+      settings={overlaySettings}
+      {isConnected}
+      eventCount={totalEventsReceived}
+      handle={streamerHandle}
+      {goals}
+      rewards={activeRewards}
+      {leaderboard}
+      {recentActions}
+      {events}
+      {activeAlert}
+      {celebratingGoal}
+      {formatTime}
     />
   <!-- HUD pixel: el tema `minecraft` trae su propio overlay vertical completo -->
   {:else if useMinecraftHud}
