@@ -92,4 +92,30 @@ Mata **solo** tu instancia. Si hay algo escuchando en 8080, es del usuario: no l
 Adelanta los temporizadores de la página, pero **no** hace que lleguen antes los eventos por
 WebSocket. Lo que viene en el handshake (reglas, metas, clasificación) sí se ve; lo que depende
 de eventos en vivo (el feed, las alertas, el contador de eventos) sale vacío en una captura
-corta. No es un fallo del widget: no intentes medir así la altura de `feed` ni la de `alert`.
+corta. No es un fallo del widget.
+
+## Capturar lo que depende de eventos en vivo (alertas, feed)
+
+Para esos hay que esperar en tiempo **real**, y `--screenshot` no sabe: dispara en cuanto se
+agota el tiempo virtual. Se abre la pestaña por CDP, se espera de verdad y se captura. No hacen
+falta dependencias: `WebSocket` es global desde Node 22.
+
+```bash
+chrome --headless=new --disable-gpu --hide-scrollbars \
+  --remote-debugging-port=9222 --user-data-dir="$TEMP/chrome-shot" about:blank &
+```
+
+Luego, por CDP: `PUT /json/new?<url>` para abrir la pestaña, conectar a su
+`webSocketDebuggerUrl`, `Emulation.setDeviceMetricsOverride` con el tamaño del widget,
+`Page.navigate`, **esperar 12-16 s reales** (el mock manda un evento cada 800 ms) y
+`Page.captureScreenshot`.
+
+Truco para que la alerta no se apague antes de la captura: subir su duración por la API de
+gestión, que no la limita como sí hace el panel.
+
+```bash
+curl -X PUT http://127.0.0.1:8099/api/overlay-settings \
+  -H "Content-Type: application/json" -d '{"bannerDurationSeconds":600}'
+```
+
+Devuélvela a `4.8` al terminar: se persiste en `config/overlay-settings.json`.

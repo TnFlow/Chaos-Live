@@ -656,7 +656,9 @@
   margin: 0;
 }
 
-.mc-alert__command {
+/* Lo que provoca el regalo en la partida, contado para la audiencia. Ocupa el
+   sitio donde antes se pintaba el comando literal. */
+.mc-alert__efecto {
   margin-top: 14px;
   display: inline-flex;
   align-items: center;
@@ -666,14 +668,19 @@
   padding: 10px 14px;
 }
 
-.mc-alert__command-badge {
-  font-size: 18px;
+.mc-alert__efecto-badge {
+  font-size: 16px;
   color: var(--mc-green);
+  /* La fuente pixel es ancha y la insignia partia en dos lineas ("EN LA" /
+     "PARTIDA"), que parecia un descuadre. */
+  white-space: nowrap;
+  align-self: flex-start;
 }
 
-.mc-alert__command-text {
-  font-size: 18px;
-  color: var(--mc-text-mute);
+.mc-alert__efecto-text {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--mc-text);
 }
 
 /* ---------- Celebración de meta ---------- */

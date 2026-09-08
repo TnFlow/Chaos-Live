@@ -64,7 +64,11 @@ export const PIXEL_WIDGET_HEIGHT: Record<WidgetName, number> = {
   rewards: 570,
   leaderboard: 350,
   queue: 300,
-  alert: 280,
+  // Medido con la alerta viva (359 px con un regalo y el efecto en dos
+  // lineas), no estimado: ahora la tarjeta lleva siempre la linea de "lo que
+  // pasa en la partida", que antes era una pildora opcional con el comando.
+  // Se redondea al alza porque una alerta de seguidor gasta dos lineas mas.
+  alert: 420,
   ticker: 80,
   feed: 420,
 };
@@ -128,9 +132,10 @@ export function widgetExistsInTheme(name: WidgetName, theme: OverlayTheme): bool
  * la columna del feed mide 340px y la lateral 320.
  *
  * Los altos estan medidos en el navegador con el panel lleno, mas margen, igual
- * que los del HUD pixel. Dos son estimados y se marcan como tales: `alert` y
- * `feed` solo se pintan cuando llegan eventos en vivo, y una captura corta no
- * los alcanza. `feed` se calcula sobre las 8 tarjetas como maximo que guarda
+ * que los del HUD pixel. `alert` ya no es estimado: se mide abriendo la pagina
+ * por CDP y esperando en tiempo real, porque una captura con tiempo virtual no
+ * llega a recibir los eventos del WebSocket (ver la skill `overlay-preview`).
+ * `feed` sigue siendo un calculo, sobre las 8 tarjetas como maximo que guarda
  * App.svelte.
  */
 export const GLASS_WIDGET_SIZE: Partial<Record<WidgetName, { width: number; height: number }>> = {

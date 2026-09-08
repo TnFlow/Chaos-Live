@@ -16,6 +16,7 @@
   import { isWidgetName, widgetExistsInTheme, type WidgetName } from './lib/widgets';
   import { connectChaosSocket, type ChaosSocket } from './lib/ws-client';
   import {
+    accionLegible,
     enqueueEffect,
     markEffectRunning,
     matchesCommandTemplate,
@@ -31,7 +32,13 @@
     RewardView,
     RuleView,
   } from './lib/overlay-types';
-  import { SOUND_PRESETS, playSound, setMasterVolume, setMuted } from './utils/sound-engine';
+  import {
+    SOUND_PRESETS,
+    playSound,
+    setCustomSoundVolumes,
+    setMasterVolume,
+    setMuted,
+  } from './utils/sound-engine';
   import {
     type OverlayCustomSettings,
     type OverlayLayout,
@@ -340,26 +347,11 @@
                     ? '🌹'
                     : '🎁');
 
-        let rewardText = r.viewerFeedback?.description || r.viewerFeedback?.title || r.action?.command || 'Evento en la partida';
-        if (r.action?.command?.includes('summon creeper') && r.action?.command?.includes('powered:1b')) {
-          rewardText = 'Invoca Creeper Cargado Jefe';
-        } else if (r.action?.command?.includes('summon zombie')) {
-          rewardText = 'Invoca Horda Zombie';
-        } else if (r.action?.command?.includes('summon skeleton')) {
-          rewardText = 'Invoca Esqueleto Sniper';
-        } else if (r.action?.command?.includes('summon tnt')) {
-          rewardText = 'Detona TNT Dinamita';
-        } else if (r.action?.command?.includes('summon chicken')) {
-          rewardText = 'Invoca Pollo en el Juego';
-        } else if (r.action?.command?.includes('summon lightning_bolt')) {
-          rewardText = 'Rayo / Tormenta Cósmica';
-        } else if (r.action?.command?.includes('summon warden')) {
-          rewardText = 'Invoca al Jefe Warden';
-        } else if (r.action?.command?.includes('effect give') && r.action?.command?.includes('speed')) {
-          rewardText = 'Velocidad al Streamer';
-        } else if (r.action?.command?.includes('particle heart')) {
-          rewardText = 'Lluvia de Corazones';
-        }
+        // Antes esto era una cadena de `if/else` con las frases escritas a
+        // mano, y su valor de reserva era el comando entero. Ahora lo decide
+        // `accionLegible`, que es el único sitio que traduce un comando a algo
+        // que la audiencia entienda, y que nunca devuelve el comando.
+        const rewardText = accionLegible(r.action?.command, r.viewerFeedback);
 
         return {
           id: r.id,
@@ -449,6 +441,32 @@
   }
 
   /**
+   * Volumen propio de cada sonido subido, del servidor al motor de audio.
+   *
+   * El overlay no guarda la biblioteca: solo necesita saber a qué volumen suena
+   * cada archivo. Se pide al conectar y se vuelve a pedir con `SOUNDS_UPDATED`,
+   * para que bajarle el volumen a un audio desde el panel se note en directo
+   * sin tener que refrescar la fuente de OBS.
+   */
+  async function fetchSoundVolumes() {
+    try {
+      const res = await fetch('/api/sounds');
+      if (!res.ok) return;
+      const data = await res.json();
+      aplicarVolumenesDeSonidos(data);
+    } catch {}
+  }
+
+  function aplicarVolumenesDeSonidos(data: any) {
+    if (!data || !Array.isArray(data.sounds)) return;
+    const volumenes: Record<string, number> = {};
+    for (const sonido of data.sounds) {
+      if (sonido?.url) volumenes[sonido.url] = typeof sonido.volume === 'number' ? sonido.volume : 1;
+    }
+    setCustomSoundVolumes(volumenes);
+  }
+
+  /**
    * Ajustes forzados por la URL de la fuente de OBS.
    *
    * Se guardan aparte porque los ajustes del servidor llegan por fetch, es
@@ -502,6 +520,8 @@
         setMasterVolume(overlaySettings.masterVolume);
         setMuted(!overlaySettings.soundEnabled);
       }
+    } else if (packet.type === 'SOUNDS_UPDATED') {
+      aplicarVolumenesDeSonidos(packet.payload);
     } else if (packet.type === 'INITIAL_LEADERBOARD' || packet.type === 'LEADERBOARD_UPDATED') {
       // La clasificación la acumula el servidor: aquí solo se dibuja lo que
       // llega, para que recargar la fuente de OBS no borre a los mayores
@@ -686,7 +706,7 @@
 
       effectQueue = markEffectRunning(effectQueue, correlationId, {
         emoji: action.icon || '⚡',
-        label: action.viewerFeedback?.title || `/${action.command || 'comando'}`,
+        label: accionLegible(action.command, action.viewerFeedback),
         rewardId: firedRewardId,
         queuedAt: Date.now(),
       });
@@ -696,6 +716,7 @@
           actionType: action.actionType || 'command',
           command: action.command || '',
           timestamp: Date.now(),
+          viewerFeedback: action.viewerFeedback,
         },
         ...recentActions.slice(0, 4),
       ];
@@ -881,6 +902,7 @@
 
     void fetchRules();
     void fetchOverlaySettings();
+    void fetchSoundVolumes();
 
     // La reconexion la gestiona el cliente compartido con el panel.
     const socket: ChaosSocket = connectChaosSocket({

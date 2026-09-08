@@ -1,8 +1,19 @@
 <script lang="ts">
 
   import type { AlertView } from '../lib/overlay-types';
+  import { accionLegible } from '../lib/mc-live-state';
 
   let { alert }: { alert: AlertView } = $props();
+
+  /**
+   * Lo que pasa en la partida, en cristiano.
+   *
+   * Debajo de esta caja iba antes una píldora con el comando literal
+   * (`MC: /execute at @p run summon tnt ~ ~2 ~ {Fuse:40}`). Se quitó: es ruido
+   * técnico que la audiencia no entiende y que enseña cómo está montado el
+   * directo por dentro.
+   */
+  let efecto = $derived(accionLegible(alert.command, alert.viewerFeedback));
 </script>
 
 <div class="grand-alert-wrapper" id="grand-alert-box">
@@ -27,17 +38,8 @@
       <!-- High-visibility Viewer Reward Highlight Box -->
       <div class="alert-reward-box">
         <div class="reward-box-label">🎮 LO QUE PASA EN LA PARTIDA:</div>
-        <div class="reward-box-desc">
-          {alert.viewerFeedback?.description || `¡${alert.sender} desató una acción en Minecraft!`}
-        </div>
+        <div class="reward-box-desc">{efecto}</div>
       </div>
-
-      {#if alert.command}
-        <div class="alert-command-pill">
-          <span class="cmd-icon">⚡</span>
-          <span class="cmd-text">MC: /{alert.command}</span>
-        </div>
-      {/if}
     </div>
   </div>
 </div>

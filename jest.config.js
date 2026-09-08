@@ -11,6 +11,7 @@ const config = {
     '<rootDir>/packages/adapters/mock',
     '<rootDir>/packages/adapters/minecraft-rcon',
     '<rootDir>/packages/app',
+    '<rootDir>/packages/overlay',
   ],
 };
 

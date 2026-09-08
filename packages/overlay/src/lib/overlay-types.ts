@@ -47,12 +47,23 @@ export interface AlertView {
   soundEvent?: 'gift' | 'follow' | 'share' | 'goal';
 }
 
-/** Un comando ya ejecutado, para la marquesina inferior. */
+/**
+ * Una acción ya ejecutada, para la marquesina inferior.
+ *
+ * `command` se conserva porque el overlay lo necesita para emparejar la acción
+ * con la regla que la disparó (`matchesCommandTemplate`) y para etiquetar la
+ * casilla del HUD pixel, pero **no se pinta**: lo que se enseña sale de
+ * `accionLegible`, que prefiere el texto que el streamer escribió en la regla.
+ */
 export interface ActionView {
   id: string;
   actionType: string;
   command: string;
   timestamp: number;
+  viewerFeedback?: {
+    title?: string;
+    description?: string;
+  };
 }
 
 /** Progreso de una meta comunitaria tal y como se dibuja. */

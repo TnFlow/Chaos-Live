@@ -179,6 +179,7 @@ async function bootstrap(): Promise<void> {
         queue,
         overlaySettings,
         overlayBaseUrl: `http://${config.overlayHost === '0.0.0.0' ? '127.0.0.1' : config.overlayHost}:${config.overlayPort}`,
+        onOverlayBroadcast: broadcastToOverlays,
         onInjectEvent: (event) => {
           void engine.handleEvent(event);
         },
@@ -214,6 +215,7 @@ async function bootstrap(): Promise<void> {
         wsHub: overlayHub,
         queue,
         overlaySettings,
+        onOverlayBroadcast: broadcastToOverlays,
         publicOnly: true,
       });
     },

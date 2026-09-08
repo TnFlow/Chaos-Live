@@ -1740,24 +1740,83 @@ body {
   padding: 0;
 }
 
-.sound-list-row {
-  display: grid;
-  grid-template-columns: auto 1fr auto auto;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 0;
+/* Cada sonido de la biblioteca: escuchar, renombrar, volumen propio, cambiar
+   el archivo y borrar, más dónde se está usando. Era una fila con el nombre y
+   una papelera, que servía para subir y para nada más. */
+.sound-card {
+  padding: 10px 0;
   border-top: 1px solid rgba(255, 255, 255, 0.07);
 }
 
-.sound-list-name {
+.sound-card-top {
+  display: grid;
+  grid-template-columns: auto 1fr auto auto auto;
+  align-items: center;
+  gap: 8px;
+}
+
+.sound-name-input {
   font-size: 0.82rem;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  font-family: inherit;
+  color: inherit;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  padding: 4px 6px;
+  min-width: 0;
+  width: 100%;
+}
+
+.sound-name-input:hover {
+  border-color: rgba(255, 255, 255, 0.14);
+}
+
+.sound-name-input:focus {
+  outline: none;
+  border-color: rgba(255, 255, 255, 0.35);
+  background: rgba(0, 0, 0, 0.25);
 }
 
 .sound-list-size {
   font-size: 0.72rem;
   opacity: 0.6;
   white-space: nowrap;
+}
+
+.sound-swap-btn {
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 8px;
+  padding: 5px 9px;
+  cursor: pointer;
+  font-size: 0.8rem;
+  line-height: 1;
+  transition: background 0.15s ease;
+}
+
+.sound-swap-btn:hover {
+  background: rgba(255, 255, 255, 0.14);
+}
+
+.sound-card-vol {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 10px;
+  margin-top: 6px;
+  padding-left: 34px;
+}
+
+.sound-vol-label {
+  font-size: 0.7rem;
+  opacity: 0.6;
+  white-space: nowrap;
+}
+
+.sound-card-uso {
+  margin: 5px 0 0;
+  padding-left: 34px;
+  font-size: 0.7rem;
+  opacity: 0.55;
+  line-height: 1.4;
 }

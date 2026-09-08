@@ -203,6 +203,94 @@ export function itemLabelFromCommand(command: string | undefined): string {
 }
 
 /**
+ * Frases que entiende la audiencia, por comando.
+ *
+ * Estaban escritas a mano dentro de `App.svelte`, en una cadena de `if/else`
+ * que solo alimentaba el menú de recompensas. Viven aquí porque ahora las usan
+ * también la alerta, las dos marquesinas y la cola: son lo que se pinta en vez
+ * del comando.
+ */
+const FRASES_POR_COMANDO: [RegExp, string][] = [
+  [/summon\s+creeper[^]*powered/i, 'Invoca Creeper Cargado Jefe'],
+  [/summon\s+creeper/i, 'Invoca un Creeper'],
+  [/summon\s+zombie/i, 'Invoca Horda Zombie'],
+  [/summon\s+skeleton/i, 'Invoca Esqueleto Sniper'],
+  [/summon\s+tnt/i, 'Detona TNT Dinamita'],
+  [/summon\s+chicken/i, 'Invoca Pollo en el Juego'],
+  [/summon\s+lightning_bolt/i, 'Rayo / Tormenta Cósmica'],
+  [/summon\s+warden/i, 'Invoca al Jefe Warden'],
+  [/summon\s+elder_guardian/i, 'Invoca al Guardián Anciano'],
+  [/effect\s+give\s+\S+\s+(?:minecraft:)?speed/i, 'Velocidad al Streamer'],
+  [/effect\s+give\s+\S+\s+(?:minecraft:)?levitation/i, 'Levitación al Streamer'],
+  [/effect\s+give\s+\S+\s+(?:minecraft:)?blindness/i, 'Ceguera al Streamer'],
+  [/particle\s+heart/i, 'Lluvia de Corazones'],
+  [/setblock[^]*lava/i, 'Lava bajo los pies'],
+  [/give\s+\S+\s+(?:minecraft:)?diamond/i, 'Lluvia de Diamantes'],
+  [/weather\s+thunder/i, 'Tormenta en la partida'],
+];
+
+/** Lo que se dice cuando no se sabe decir nada mejor. Nunca es un comando. */
+const FRASE_GENERICA = 'Algo pasa en la partida';
+
+/**
+ * Un texto de regla que todavia lleva marcadores sin resolver.
+ *
+ * El motor interpola `${user.displayName}` al despachar, pero el menu de
+ * recompensas y la marquesina pintan el catalogo de reglas *antes* de que
+ * nadie las dispare, con la plantilla tal cual. En pantalla salia
+ * "${user.displayName} sent a Rose!", que es la misma fuga que el comando:
+ * sintaxis interna delante de la audiencia.
+ */
+function tieneMarcadoresSinResolver(texto: string): boolean {
+  return texto.includes('${');
+}
+
+/**
+ * Solo palabras: ni `@p`, ni `~ ~2 ~`, ni `{Fuse:40}`, ni `minecraft:`.
+ *
+ * `itemLabelFromCommand` termina devolviendo la última palabra del comando
+ * cuando no reconoce nada, y esa última palabra puede ser perfectamente
+ * `@a` o `{powered:1b}`. En la casilla del HUD eso ya se veía raro; en una
+ * marquesina a pantalla completa sería justo lo que hay que esconder.
+ */
+function esFrasePresentable(texto: string): boolean {
+  return /^[\p{L} ]+$/u.test(texto);
+}
+
+/**
+ * El texto que ve la audiencia cuando una regla se dispara.
+ *
+ * Es el único sitio que decide qué se enseña de una acción, y **nunca devuelve
+ * el comando**: `execute at @p run summon tnt ~ ~2 ~ {Fuse:40}` no le dice nada
+ * a quien está viendo el directo y además enseña cómo está montado por dentro.
+ *
+ * Manda lo que el streamer haya escrito para esa regla, porque es quien mejor
+ * sabe contarlo; si no escribió nada, se traduce el comando a una frase; y si
+ * el comando es uno que no se reconoce, se dice algo genérico antes que
+ * arriesgarse a pintar texto técnico.
+ */
+export function accionLegible(
+  command: string | undefined,
+  viewerFeedback?: { title?: string; description?: string }
+): string {
+  const descripcion = viewerFeedback?.description?.trim();
+  if (descripcion && !tieneMarcadoresSinResolver(descripcion)) return descripcion;
+
+  const titulo = viewerFeedback?.title?.trim();
+  if (titulo && !tieneMarcadoresSinResolver(titulo)) return titulo;
+
+  const raw = (command ?? '').trim();
+  if (!raw) return FRASE_GENERICA;
+
+  for (const [patron, frase] of FRASES_POR_COMANDO) {
+    if (patron.test(raw)) return frase;
+  }
+
+  const item = itemLabelFromCommand(raw);
+  return esFrasePresentable(item) ? `${item} en la partida` : FRASE_GENERICA;
+}
+
+/**
  * Decide si un comando ya ejecutado salió de una plantilla de regla.
  *
  * El motor interpola la plantilla antes de despachar (`summon lightning_bolt

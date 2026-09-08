@@ -21,6 +21,13 @@ export interface CustomSound {
   name: string;
   url: string;
   sizeBytes: number;
+  /** Cuánto suena este sonido, de 0 a 1, sobre el volumen general. */
+  volume: number;
+  /**
+   * Dónde se está usando: `event:gift`, `rule:<nombre>`. Son identificadores,
+   * no texto para enseñar — las etiquetas de cada momento las pone el panel.
+   */
+  inUse: string[];
 }
 
 /** Error de la API que conserva el mensaje explicativo del servidor. */
@@ -184,6 +191,33 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ name, dataUrl }),
     });
+    return data.sound;
+  },
+
+  /** Cambia el nombre visible, el volumen, o los dos. */
+  async updateSound(
+    id: string,
+    cambios: { name?: string; volume?: number },
+  ): Promise<CustomSound> {
+    const data = await request<{ sound: CustomSound }>(
+      `/api/sounds/${encodeURIComponent(id)}`,
+      { method: 'PATCH', body: JSON.stringify(cambios) },
+    );
+    return data.sound;
+  },
+
+  /**
+   * Cambia el audio conservando nombre, volumen y asignaciones.
+   *
+   * Devuelve el sonido con un **id nuevo**: el servidor estrena archivo a
+   * propósito para que el navegador de OBS no siga sirviendo el anterior desde
+   * su caché.
+   */
+  async replaceSound(id: string, dataUrl: string): Promise<CustomSound> {
+    const data = await request<{ sound: CustomSound }>(
+      `/api/sounds/${encodeURIComponent(id)}/replace`,
+      { method: 'POST', body: JSON.stringify({ dataUrl }) },
+    );
     return data.sound;
   },
 

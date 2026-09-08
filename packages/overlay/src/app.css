@@ -124,6 +124,29 @@ body.dashboard-mode {
   }
 }
 
+/*
+ * El mismo pop, pero sin desplazar: para la alerta y la celebracion servidas
+ * como capa suelta, que ya no se centran en la pantalla sino que ocupan su
+ * propia capa. Ver `.glass-widget` en overlay.css.
+ */
+@keyframes widgetPop {
+  0% {
+    opacity: 0;
+    transform: scale(0.7);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.05);
+  }
+  70% {
+    transform: scale(0.98);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
 @keyframes pulseGlow {
   0%, 100% {
     filter: drop-shadow(0 0 10px rgba(6, 182, 212, 0.6));

@@ -17,8 +17,14 @@ import { saveRules } from '../config/config.js';
 import { logger } from '../logger.js';
 import {
   listSounds,
+  getSound,
   saveSound,
   deleteSound,
+  renameSound,
+  setSoundVolume,
+  replaceSound,
+  remapEventSounds,
+  soundUsage,
   SoundValidationError,
   MAX_BYTES_SONIDO,
 } from '../config/sounds.js';
@@ -58,6 +64,16 @@ export interface ApiContext {
    * gestion y no tiene forma de adivinar el puerto publico.
    */
   overlayBaseUrl?: string;
+  /**
+   * Emite a los overlays de **las dos** superficies.
+   *
+   * `context.wsHub` es solo el hub por el que entró la petición, así que un
+   * `broadcastToOverlay` suelto llega a los overlays del puerto de gestión y
+   * deja congelados los widgets que TikTok LIVE Studio carga por el puerto
+   * público. Los cambios de sonido tienen que llegar a los dos: si no, el
+   * streamer baja el volumen de un audio y en el directo sigue igual de alto.
+   */
+  onOverlayBroadcast?: (type: string, payload: unknown) => void;
 }
 
 /**
@@ -82,7 +98,7 @@ function sendJson(res: http.ServerResponse, statusCode: number, data: unknown): 
   res.writeHead(statusCode, {
     'Content-Type': 'application/json; charset=utf-8',
     'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+    'Access-Control-Allow-Methods': 'GET, POST, PUT, PATCH, DELETE, OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type, Authorization',
   });
   res.end(JSON.stringify(data));
@@ -400,6 +416,48 @@ async function buildDiagnostics(context: ApiContext): Promise<{
 }
 
 /**
+ * La biblioteca de sonidos tal y como la ve el panel: lo que hay en disco, más
+ * dónde se está usando cada uno.
+ *
+ * El overlay solo necesita el volumen de cada sonido, pero se sirve la misma
+ * forma a los dos: `GET /api/rules` ya es público, así que los nombres de regla
+ * que salen en `inUse` no destapan nada nuevo, y mantener dos formas distintas
+ * del mismo recurso solo daría ocasión de que se desincronicen.
+ */
+function describirSonidos(context: ApiContext): {
+  sounds: unknown[];
+  maxBytes: number;
+} {
+  const usos = soundUsage(context.overlaySettings.get().eventSounds, context.ruleEvaluator.getRules());
+
+  return {
+    sounds: listSounds().map((s) => ({ ...s, inUse: usos[s.url] ?? [] })),
+    maxBytes: MAX_BYTES_SONIDO,
+  };
+}
+
+/** Avisa a los overlays de las dos superficies de que la biblioteca cambió. */
+function avisarDeSonidos(context: ApiContext): void {
+  context.onOverlayBroadcast?.('SOUNDS_UPDATED', describirSonidos(context));
+}
+
+/**
+ * Reapunta los momentos que usaban un sonido y avisa al overlay si algo cambió.
+ *
+ * Vive en el servidor y no en el panel porque los ajustes son del servidor: da
+ * igual quién dispare el borrado o el reemplazo, las asignaciones tienen que
+ * quedar coherentes.
+ */
+function migrarAsignaciones(context: ApiContext, deUrl: string, aUrl: string): void {
+  const actuales = context.overlaySettings.get().eventSounds;
+  const migrados = remapEventSounds(actuales, deUrl, aUrl);
+  if (!migrados) return;
+
+  const settings = context.overlaySettings.update({ eventSounds: migrados });
+  context.onOverlayBroadcast?.('OVERLAY_SETTINGS_UPDATED', settings);
+}
+
+/**
  * Handles REST management API requests.
  * Returns true if the request was an /api route and was handled.
  */
@@ -416,7 +474,7 @@ export async function handleApiRequest(
   if (method === 'OPTIONS') {
     res.writeHead(204, {
       'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+      'Access-Control-Allow-Methods': 'GET, POST, PUT, PATCH, DELETE, OPTIONS',
       'Access-Control-Allow-Headers': 'Content-Type, Authorization',
     });
     res.end();
@@ -756,7 +814,7 @@ export async function handleApiRequest(
 
     // GET /api/sounds — sonidos que ha subido el streamer
     if (pathname === '/api/sounds' && method === 'GET') {
-      sendJson(res, 200, { sounds: listSounds(), maxBytes: MAX_BYTES_SONIDO });
+      sendJson(res, 200, describirSonidos(context));
       return true;
     }
 
@@ -769,7 +827,68 @@ export async function handleApiRequest(
       const parsed = await readJsonBody(req);
       try {
         const sound = saveSound(String(parsed['name'] ?? ''), String(parsed['dataUrl'] ?? ''));
+        avisarDeSonidos(context);
         sendJson(res, 201, { success: true, sound });
+      } catch (err) {
+        if (err instanceof SoundValidationError) {
+          sendJson(res, 400, { error: err.message });
+        } else {
+          throw err;
+        }
+      }
+      return true;
+    }
+
+    // POST /api/sounds/:id/replace — cambiar el audio conservando su sitio
+    //
+    // El streamer cambia de audio de moda cada pocos días y quiere que suene en
+    // los mismos momentos: por eso esto existe en vez de "borra y sube otro",
+    // que le dejaría los momentos en silencio hasta reasignarlos a mano.
+    if (pathname.match(/^\/api\/sounds\/[^/]+\/replace$/) && method === 'POST') {
+      const id = decodeURIComponent(pathname.split('/')[3]!);
+      const parsed = await readJsonBody(req);
+
+      try {
+        const resultado = replaceSound(id, String(parsed['dataUrl'] ?? ''));
+        if (!resultado) {
+          sendJson(res, 404, { error: 'Ese sonido ya no está.' });
+          return true;
+        }
+
+        migrarAsignaciones(context, resultado.oldUrl, resultado.sound.url);
+        avisarDeSonidos(context);
+        sendJson(res, 200, { success: true, sound: resultado.sound });
+      } catch (err) {
+        if (err instanceof SoundValidationError) {
+          sendJson(res, 400, { error: err.message });
+        } else {
+          throw err;
+        }
+      }
+      return true;
+    }
+
+    // PATCH /api/sounds/:id — nombre y volumen
+    if (pathname.startsWith('/api/sounds/') && method === 'PATCH') {
+      const id = decodeURIComponent(pathname.slice('/api/sounds/'.length));
+      const updates = await readJsonBody(req);
+
+      try {
+        let sound = getSound(id);
+        if (!sound) {
+          sendJson(res, 404, { error: 'Ese sonido ya no está.' });
+          return true;
+        }
+
+        if (updates['name'] !== undefined) {
+          sound = renameSound(id, String(updates['name'])) ?? sound;
+        }
+        if (updates['volume'] !== undefined) {
+          sound = setSoundVolume(id, Number(updates['volume'])) ?? sound;
+        }
+
+        avisarDeSonidos(context);
+        sendJson(res, 200, { success: true, sound });
       } catch (err) {
         if (err instanceof SoundValidationError) {
           sendJson(res, 400, { error: err.message });
@@ -784,6 +903,12 @@ export async function handleApiRequest(
     if (pathname.startsWith('/api/sounds/') && method === 'DELETE') {
       const id = decodeURIComponent(pathname.slice('/api/sounds/'.length));
       if (deleteSound(id)) {
+        // Los momentos que lo usaban vuelven a "sin sonido". Antes esto lo hacia
+        // el panel despues de borrar, asi que solo funcionaba si quien borraba
+        // era el panel, y cualquier otro camino dejaba los ajustes apuntando a
+        // un archivo inexistente: el evento se quedaba mudo sin explicacion.
+        migrarAsignaciones(context, `/sounds/${id}`, 'none');
+        avisarDeSonidos(context);
         sendJson(res, 200, { success: true });
       } else {
         sendJson(res, 404, { error: 'Ese sonido ya no está.' });

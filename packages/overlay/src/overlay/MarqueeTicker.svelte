@@ -1,6 +1,7 @@
 <script lang="ts">
 
   import type { ActionView, RewardView } from '../lib/overlay-types';
+  import { accionLegible } from '../lib/mc-live-state';
 
   let {
     rewards,
@@ -51,7 +52,7 @@
     <div class="ticker-items">
       {#each recentActions as action (action.id)}
         <div class="ticker-item">
-          <span class="ticker-cmd">/{action.command}</span>
+          <span class="ticker-text">{accionLegible(action.command, action.viewerFeedback)}</span>
         </div>
       {/each}
     </div>

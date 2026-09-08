@@ -26,6 +26,20 @@ let audioCtx: AudioContext | null = null;
 let masterVolume = 0.8;
 let isMuted = false;
 
+/**
+ * Volumen propio de cada sonido subido por el streamer, por URL.
+ *
+ * Un audio descargado de donde sea viene al volumen que venga. Sin esto, para
+ * que un sonido de moda no reventara la transmisión había que reeditar el
+ * archivo o bajar el volumen general y dejar el resto del overlay inaudible.
+ * Lo manda el servidor en `/api/sounds`, que es quien guarda el ajuste.
+ */
+let customSoundVolumes: Record<string, number> = {};
+
+export function setCustomSoundVolumes(volumes: Record<string, number>): void {
+  customSoundVolumes = volumes;
+}
+
 function getAudioContext(): AudioContext | null {
   if (typeof window === 'undefined') return null;
   if (!audioCtx) {
@@ -68,7 +82,8 @@ export function playSound(soundIdOrUrl?: string, volumeMultiplier = 1.0): void {
   if (soundIdOrUrl.startsWith('http://') || soundIdOrUrl.startsWith('https://') || soundIdOrUrl.startsWith('/') || soundIdOrUrl.match(/\.(mp3|wav|ogg|aac|m4a)$/i)) {
     try {
       const audio = new Audio(soundIdOrUrl);
-      audio.volume = Math.max(0, Math.min(1, masterVolume * volumeMultiplier));
+      const propio = customSoundVolumes[soundIdOrUrl] ?? 1;
+      audio.volume = Math.max(0, Math.min(1, masterVolume * volumeMultiplier * propio));
       void audio.play().catch(() => {
         // Autoplay may be blocked if user hasn't interacted yet
       });

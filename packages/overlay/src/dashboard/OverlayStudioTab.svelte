@@ -79,13 +79,7 @@
     subiendo = true;
     avisoSonido = '';
     try {
-      const dataUrl = await new Promise<string>((resolve, reject) => {
-        const lector = new FileReader();
-        lector.onload = () => resolve(String(lector.result));
-        lector.onerror = () => reject(new Error('No se pudo leer el archivo.'));
-        lector.readAsDataURL(archivo);
-      });
-
+      const dataUrl = await leerComoDataUrl(archivo);
       const sonido = await api.uploadSound(archivo.name, dataUrl);
       await cargarSonidos();
       avisoSonido = `✅ "${sonido.name}" listo para usar.`;
@@ -99,22 +93,110 @@
     }
   }
 
+  /**
+   * Dónde se usa un sonido, ya en cristiano.
+   *
+   * El servidor manda identificadores (`event:gift`, `rule:Gift: Rose`) en vez
+   * de texto traducido: las etiquetas de cada momento ya están aquí, en
+   * `MOMENTOS`, y tenerlas también en el servidor sería pedir que se
+   * desincronicen.
+   */
+  function usosLegibles(sonido: CustomSound): string[] {
+    return (sonido.inUse ?? []).map((uso) => {
+      if (uso.startsWith('event:')) {
+        const id = uso.slice('event:'.length) as OverlaySoundEvent;
+        return MOMENTOS.find((m) => m.id === id)?.etiqueta ?? id;
+      }
+      return `📜 ${uso.slice('rule:'.length)}`;
+    });
+  }
+
+  async function renombrarSonido(sonido: CustomSound, nombre: string) {
+    const limpio = nombre.trim();
+    if (!limpio || limpio === sonido.name) return;
+
+    try {
+      await api.updateSound(sonido.id, { name: limpio });
+      await cargarSonidos();
+    } catch (err) {
+      avisoSonido = `⚠️ ${err instanceof ApiError ? err.userMessage : String(err)}`;
+      await cargarSonidos();
+    }
+  }
+
+  /**
+   * Guarda el volumen cuando el streamer suelta el deslizador.
+   *
+   * Con `oninput` se mandaría una petición por cada píxel de arrastre; con
+   * `onchange` va una sola, al soltar.
+   */
+  async function ajustarVolumen(sonido: CustomSound, volume: number) {
+    try {
+      await api.updateSound(sonido.id, { volume });
+      await cargarSonidos();
+      playSound(sonido.url);
+    } catch (err) {
+      avisoSonido = `⚠️ ${err instanceof ApiError ? err.userMessage : String(err)}`;
+    }
+  }
+
+  async function reemplazarSonido(sonido: CustomSound, evento: Event) {
+    const input = evento.target as HTMLInputElement;
+    const archivo = input.files?.[0];
+    if (!archivo) return;
+
+    subiendo = true;
+    avisoSonido = '';
+    try {
+      const dataUrl = await leerComoDataUrl(archivo);
+      const nuevo = await api.replaceSound(sonido.id, dataUrl);
+      await cargarSonidos();
+      avisoSonido = `🔁 "${nuevo.name}" cambiado. Sigue sonando donde ya estaba.`;
+      playSound(nuevo.url);
+    } catch (err) {
+      avisoSonido = `⚠️ ${err instanceof ApiError ? err.userMessage : String(err)}`;
+    } finally {
+      subiendo = false;
+      input.value = '';
+    }
+  }
+
   async function borrarSonido(sonido: CustomSound) {
-    // Un sonido borrado que siguiera elegido dejaria ese evento mudo sin
-    // explicacion, asi que los momentos que lo usaban vuelven a "sin sonido".
+    // El servidor deja en "sin sonido" los momentos que lo usaban; aquí solo
+    // hay que avisar antes, porque el streamer no tiene por qué recordar dónde
+    // lo tenía puesto.
+    const usos = usosLegibles(sonido);
+    const aviso = usos.length
+      ? `Se va a borrar "${sonido.name}".\n\nSe quedan sin sonido: ${usos.join(', ')}.`
+      : `Se va a borrar "${sonido.name}".`;
+    if (!confirm(aviso)) return;
+
     try {
       await api.deleteSound(sonido.id);
-      const limpio = { ...overlaySettings.eventSounds };
-      for (const [momento, valor] of Object.entries(limpio)) {
-        if (valor === sonido.url) limpio[momento as OverlaySoundEvent] = 'none';
-      }
-      overlaySettings.eventSounds = limpio;
-      saveOverlaySettings();
+      await recargarAjustes();
       await cargarSonidos();
       avisoSonido = `🗑️ "${sonido.name}" borrado.`;
     } catch (err) {
       avisoSonido = `⚠️ ${err instanceof ApiError ? err.userMessage : String(err)}`;
     }
+  }
+
+  /** Relee los ajustes: al borrar o reemplazar, el servidor los reescribe. */
+  async function recargarAjustes() {
+    try {
+      overlaySettings = { ...overlaySettings, ...(await api.getOverlaySettings()) };
+    } catch {
+      // Que no se refresque la vista no puede impedir el resto de la operación.
+    }
+  }
+
+  function leerComoDataUrl(archivo: File): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const lector = new FileReader();
+      lector.onload = () => resolve(String(lector.result));
+      lector.onerror = () => reject(new Error('No se pudo leer el archivo.'));
+      lector.readAsDataURL(archivo);
+    });
   }
 
   let {
@@ -378,22 +460,68 @@
 
           {#if sonidosPropios.length > 0}
             <ul class="sound-list">
-              {#each sonidosPropios as propio}
-                <li class="sound-list-row">
-                  <button
-                    type="button"
-                    class="sound-try-btn"
-                    title="Escuchar"
-                    onclick={() => playSound(propio.url)}
-                  >▶</button>
-                  <span class="sound-list-name">{propio.name}</span>
-                  <span class="sound-list-size">{Math.round(propio.sizeBytes / 1024)} KB</span>
-                  <button
-                    type="button"
-                    class="sound-del-btn"
-                    title="Borrar"
-                    onclick={() => borrarSonido(propio)}
-                  >🗑️</button>
+              {#each sonidosPropios as propio (propio.id)}
+                {@const usos = usosLegibles(propio)}
+                <li class="sound-card">
+                  <div class="sound-card-top">
+                    <button
+                      type="button"
+                      class="sound-try-btn"
+                      title="Escuchar"
+                      onclick={() => playSound(propio.url)}
+                    >▶</button>
+                    <input
+                      type="text"
+                      class="sound-name-input"
+                      value={propio.name}
+                      title="Cambiar el nombre"
+                      aria-label="Nombre del sonido"
+                      onblur={(e) => renombrarSonido(propio, (e.target as HTMLInputElement).value)}
+                      onkeydown={(e) => {
+                        if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+                      }}
+                    />
+                    <span class="sound-list-size">{Math.round(propio.sizeBytes / 1024)} KB</span>
+                    <label class="sound-swap-btn" title="Cambiar el archivo, conservando dónde suena">
+                      🔁
+                      <input
+                        type="file"
+                        accept="audio/*"
+                        disabled={subiendo}
+                        onchange={(e) => reemplazarSonido(propio, e)}
+                        hidden
+                      />
+                    </label>
+                    <button
+                      type="button"
+                      class="sound-del-btn"
+                      title="Borrar"
+                      onclick={() => borrarSonido(propio)}
+                    >🗑️</button>
+                  </div>
+
+                  <div class="sound-card-vol">
+                    <span class="sound-vol-label">Volumen {Math.round(propio.volume * 100)}%</span>
+                    <input
+                      type="range"
+                      min="0"
+                      max="1"
+                      step="0.05"
+                      value={propio.volume}
+                      class="styled-range"
+                      aria-label="Volumen de {propio.name}"
+                      onchange={(e) =>
+                        ajustarVolumen(propio, Number((e.target as HTMLInputElement).value))}
+                    />
+                  </div>
+
+                  <p class="sound-card-uso">
+                    {#if usos.length > 0}
+                      En uso: {usos.join(' · ')}
+                    {:else}
+                      Sin asignar a ningún momento todavía.
+                    {/if}
+                  </p>
                 </li>
               {/each}
             </ul>

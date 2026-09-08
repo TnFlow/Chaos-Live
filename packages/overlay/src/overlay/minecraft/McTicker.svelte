@@ -1,12 +1,16 @@
 <script lang="ts">
   /**
-   * Marquesina inferior con los comandos ya ejecutados.
+   * Marquesina inferior con lo que ya ha pasado en la partida.
    *
    * La lista se duplica y la animación desplaza justo un 50%, que es lo que
-   * hace que el bucle no tenga costura. Con menos de tres comandos se rellena
+   * hace que el bucle no tenga costura. Con menos de tres entradas se rellena
    * repitiendo, para que la cinta no se quede medio vacía al arrancar.
+   *
+   * Cada entrada se cuenta en cristiano ("Detona TNT Dinamita"), no con el
+   * comando que salió hacia el servidor: esta cinta va a pantalla completa.
    */
   import type { ActionView, RewardView } from '../../lib/overlay-types';
+  import { accionLegible } from '../../lib/mc-live-state';
 
   let {
     recentActions,
@@ -22,7 +26,7 @@
   // entonces el catálogo de reglas, que es lo que la audiencia puede provocar.
   let items = $derived(
     recentActions.length > 0
-      ? recentActions.map((a) => `/${a.command}`)
+      ? recentActions.map((a) => accionLegible(a.command, a.viewerFeedback))
       : rewards.map((r) => `${r.icon} ${r.giftName} → ${r.rewardText}`)
   );
 </script>
