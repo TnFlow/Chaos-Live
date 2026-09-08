@@ -1,0 +1,20 @@
+{
+  "name": "@chaos-live/desktop",
+  "version": "2.0.0",
+  "private": true,
+  "description": "Aplicación de escritorio para Windows — arranca, supervisa y muestra Chaos-Live en su propia ventana",
+  "//type": "CommonJS a propósito, y es el único paquete del monorepo que no es ESM: el proceso principal de Electron 33 no carga un entry en módulos ES (su cargador revienta al preparsear el módulo interno 'electron'). Se comprobó con un main de dos líneas. No arrastra a nadie: este paquete no importa ningún otro del monorepo.",
+  "main": "./dist/main.js",
+  "scripts": {
+    "build": "tsc && node scripts/copy-assets.mjs",
+    "dev": "npm run build && electron .",
+    "clean": "rimraf dist"
+  },
+  "author": "Chaos-Live",
+  "license": "SEE LICENSE IN ../../LICENSE",
+  "//devDependencies": "Versiones exactas, sin rango. npm eleva electron a la raiz del monorepo y electron-builder, que lo busca en node_modules de este paquete, no lo encuentra: con un rango se planta con 'Cannot compute electron version'. Fijandolas lo resuelve, y de paso el instalador sale del mismo Electron en cualquier maquina.",
+  "devDependencies": {
+    "electron": "33.4.11",
+    "electron-builder": "25.1.8"
+  }
+}

@@ -180,6 +180,9 @@ async function bootstrap(): Promise<void> {
         overlaySettings,
         overlayBaseUrl: `http://${config.overlayHost === '0.0.0.0' ? '127.0.0.1' : config.overlayHost}:${config.overlayPort}`,
         onOverlayBroadcast: broadcastToOverlays,
+        onShutdownRequested: () => {
+          void shutdown('api', 0);
+        },
         onInjectEvent: (event) => {
           void engine.handleEvent(event);
         },

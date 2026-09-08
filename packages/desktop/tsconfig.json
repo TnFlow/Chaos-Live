@@ -1,0 +1,22 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "dist",
+    "rootDir": "src",
+    "lib": ["ES2023", "DOM"],
+    "types": ["node"],
+
+    /*
+     * CommonJS, al revés que el resto del monorepo. El proceso principal de
+     * Electron no carga un entry en módulos ES: su cargador falla al preparsear
+     * el módulo interno `electron`. Ver la nota en package.json.
+     *
+     * `verbatimModuleSyntax` se apaga porque exige sintaxis de módulos ES en
+     * ficheros que aquí se emiten como CommonJS.
+     */
+    "module": "CommonJS",
+    "moduleResolution": "Node",
+    "verbatimModuleSyntax": false
+  },
+  "include": ["src/**/*.ts"]
+}

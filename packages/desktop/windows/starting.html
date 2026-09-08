@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <title>Chaos-Live</title>
+    <style>
+      /*
+       * Pantalla de arranque.
+       *
+       * Existe porque el servidor tarda unos segundos en levantarse y antes esa
+       * espera era una ventana de consola llena de texto que nadie sabia leer.
+       * Aqui se ve que algo esta pasando, y si falla, el motivo se queda escrito
+       * en pantalla en vez de cerrarse la ventana sin dar tiempo a leerlo.
+       */
+      :root {
+        color-scheme: dark;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        height: 100vh;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 22px;
+        padding: 40px;
+        background: radial-gradient(circle at 50% 0%, #16203a 0%, #0b0f1a 60%);
+        color: #f8fafc;
+        font-family: 'Segoe UI', system-ui, sans-serif;
+      }
+      h1 {
+        margin: 0;
+        font-size: 30px;
+        letter-spacing: 0.04em;
+      }
+      .sub {
+        margin: 0;
+        color: #94a3b8;
+        font-size: 15px;
+      }
+      .barra {
+        width: min(520px, 100%);
+        height: 4px;
+        border-radius: 4px;
+        background: rgba(255, 255, 255, 0.08);
+        overflow: hidden;
+      }
+      .barra span {
+        display: block;
+        height: 100%;
+        width: 35%;
+        border-radius: 4px;
+        background: linear-gradient(90deg, #06b6d4, #22d3ee);
+        animation: corre 1.4s ease-in-out infinite;
+      }
+      @keyframes corre {
+        0% {
+          transform: translateX(-100%);
+        }
+        100% {
+          transform: translateX(320%);
+        }
+      }
+      #registro {
+        width: min(760px, 100%);
+        height: 220px;
+        overflow-y: auto;
+        padding: 14px 16px;
+        border-radius: 10px;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        background: rgba(0, 0, 0, 0.35);
+        font-family: 'Cascadia Mono', Consolas, monospace;
+        font-size: 12px;
+        line-height: 1.6;
+        color: #94a3b8;
+        white-space: pre-wrap;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Chaos-Live</h1>
+    <p class="sub">Preparando tu directo…</p>
+    <div class="barra"><span></span></div>
+    <div id="registro"></div>
+
+    <script>
+      const caja = document.getElementById('registro');
+
+      function pintar(linea) {
+        caja.textContent += (caja.textContent ? '\n' : '') + linea;
+        caja.scrollTop = caja.scrollHeight;
+      }
+
+      window.chaos.registro().then((lineas) => lineas.forEach(pintar));
+      window.chaos.alRegistrar(pintar);
+    </script>
+  </body>
+</html>

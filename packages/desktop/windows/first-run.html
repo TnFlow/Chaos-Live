@@ -1,0 +1,205 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <title>Chaos-Live — Primeros pasos</title>
+    <style>
+      /*
+       * Primeros pasos.
+       *
+       * Sustituye a "Configurar-Streamer.bat" y a "Instalar-Mod-Minecraft.bat".
+       * Son las dos unicas cosas que Chaos-Live no puede averiguar solo: a que
+       * cuenta de TikTok conectarse y donde esta el Minecraft del streamer.
+       */
+      :root {
+        color-scheme: dark;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 40px 24px;
+        background: radial-gradient(circle at 50% 0%, #16203a 0%, #0b0f1a 60%);
+        color: #f8fafc;
+        font-family: 'Segoe UI', system-ui, sans-serif;
+      }
+      main {
+        width: min(620px, 100%);
+      }
+      h1 {
+        margin: 0 0 6px;
+        font-size: 28px;
+      }
+      .sub {
+        margin: 0 0 30px;
+        color: #94a3b8;
+        font-size: 15px;
+        line-height: 1.5;
+      }
+      .paso {
+        padding: 22px;
+        margin-bottom: 16px;
+        border-radius: 12px;
+        border: 1px solid rgba(255, 255, 255, 0.09);
+        background: rgba(255, 255, 255, 0.03);
+      }
+      .paso h2 {
+        margin: 0 0 6px;
+        font-size: 16px;
+      }
+      .paso p {
+        margin: 0 0 14px;
+        color: #94a3b8;
+        font-size: 13.5px;
+        line-height: 1.55;
+      }
+      .fila {
+        display: flex;
+        gap: 10px;
+      }
+      input[type='text'] {
+        flex: 1;
+        min-width: 0;
+        padding: 11px 14px;
+        border-radius: 9px;
+        border: 1px solid rgba(255, 255, 255, 0.16);
+        background: rgba(0, 0, 0, 0.35);
+        color: inherit;
+        font-family: inherit;
+        font-size: 15px;
+      }
+      input[type='text']:focus {
+        outline: none;
+        border-color: #22d3ee;
+      }
+      button {
+        padding: 11px 20px;
+        border-radius: 9px;
+        border: none;
+        cursor: pointer;
+        font-family: inherit;
+        font-size: 14px;
+        font-weight: 600;
+        background: #06b6d4;
+        color: #04121a;
+        transition: filter 0.15s ease;
+      }
+      button.secundario {
+        background: rgba(255, 255, 255, 0.09);
+        color: #e2e8f0;
+      }
+      button:hover:not(:disabled) {
+        filter: brightness(1.12);
+      }
+      button:disabled {
+        opacity: 0.55;
+        cursor: default;
+      }
+      .aviso {
+        margin: 12px 0 0;
+        font-size: 13px;
+        line-height: 1.55;
+        color: #cbd5e1;
+        white-space: pre-wrap;
+      }
+      .saltar {
+        margin-top: 22px;
+        text-align: center;
+      }
+      .saltar button {
+        background: none;
+        color: #64748b;
+        font-weight: 500;
+        text-decoration: underline;
+        padding: 6px;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Bienvenido a Chaos-Live</h1>
+      <p class="sub">
+        Dos cosas y ya estás en directo. Puedes cambiarlas cuando quieras desde el panel.
+      </p>
+
+      <section class="paso">
+        <h2>1. Tu cuenta de TikTok</h2>
+        <p>
+          El nombre de usuario con el que emites, sin la arroba. Es a esa cuenta a la que
+          Chaos-Live se conecta para escuchar los regalos y los comentarios.
+        </p>
+        <div class="fila">
+          <input id="canal" type="text" placeholder="tunombredeusuario" autocomplete="off" />
+          <button id="guardar">Empezar</button>
+        </div>
+        <p class="aviso" id="aviso-canal"></p>
+      </section>
+
+      <section class="paso">
+        <h2>2. El mod de Minecraft <span style="opacity: 0.6">(opcional)</span></h2>
+        <p>
+          Es lo que ejecuta los efectos dentro de tu partida. Se instala solo: buscamos tu
+          Minecraft (también CurseForge, Prism y Modrinth) y lo dejamos en su carpeta de mods.
+          Si prefieres jugar con RCON en un servidor, sáltatelo.
+        </p>
+        <button class="secundario" id="mod">Instalar el mod</button>
+        <p class="aviso" id="aviso-mod"></p>
+      </section>
+
+      <div class="saltar">
+        <button id="simular">Solo quiero probarlo sin conectar TikTok</button>
+      </div>
+    </main>
+
+    <script>
+      const canal = document.getElementById('canal');
+      const guardar = document.getElementById('guardar');
+      const avisoCanal = document.getElementById('aviso-canal');
+      const mod = document.getElementById('mod');
+      const avisoMod = document.getElementById('aviso-mod');
+      const simular = document.getElementById('simular');
+
+      window.chaos.estadoInicial().then((estado) => {
+        if (estado.canal) canal.value = estado.canal;
+        if (!estado.hayMod) {
+          mod.disabled = true;
+          avisoMod.textContent = 'Esta instalación no trae el mod compilado.';
+        }
+        canal.focus();
+      });
+
+      async function empezar() {
+        guardar.disabled = true;
+        avisoCanal.textContent = 'Arrancando…';
+        const resultado = await window.chaos.guardarCanal(canal.value);
+        if (!resultado.ok) {
+          avisoCanal.textContent = resultado.mensaje;
+          guardar.disabled = false;
+        }
+      }
+
+      guardar.addEventListener('click', empezar);
+      canal.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') empezar();
+      });
+
+      mod.addEventListener('click', async () => {
+        mod.disabled = true;
+        avisoMod.textContent = 'Buscando tu Minecraft…';
+        const resultado = await window.chaos.instalarMod();
+        avisoMod.textContent = resultado.mensaje;
+        mod.disabled = false;
+      });
+
+      simular.addEventListener('click', () => {
+        simular.disabled = true;
+        window.chaos.modoSimulacion();
+      });
+    </script>
+  </body>
+</html>

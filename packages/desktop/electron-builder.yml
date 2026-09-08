@@ -1,0 +1,66 @@
+# =============================================================================
+# Chaos-Live — empaquetado de la aplicación de Windows
+#
+# El payload del servidor (bundle, cliente de Prisma, overlay compilado,
+# plantillas de configuración y el mod ya construido) lo prepara antes
+# `scripts/package-windows.ps1` en `release/electron-resources`, y entra como
+# `extraResources`: fuera del asar, como ficheros reales en disco.
+#
+# Tiene que ser así. El bundle marca `@prisma/client` como externo, así que el
+# cliente generado viaja aparte con su motor nativo, y un `.node` dentro de un
+# archivo asar no se puede cargar. Al quedar fuera, la resolución de módulos
+# desde `server/app/bundle.mjs` sube a `server/node_modules/` y funciona igual
+# que en la distribución de siempre.
+# =============================================================================
+appId: com.chaoslive.desktop
+productName: Chaos-Live
+copyright: Chaos-Live
+
+directories:
+  output: ../../release
+  buildResources: resources
+
+# No reinstalar ni recompilar dependencias al empaquetar.
+#
+# Este paquete no tiene ninguna de produccion: Electron y electron-builder son
+# de desarrollo, y todo lo que la app necesita en marcha viaja en
+# `extraResources`. Ese paso, ademas, es destructivo aqui: dentro de un
+# monorepo con workspaces reescribe el arbol de node_modules de la raiz y se
+# lleva por delante `app-builder-bin`, es decir, el propio binario que
+# electron-builder esta usando. Fallaba con un ENOENT sobre app-builder.exe
+# justo despues de anunciar "installing production dependencies".
+npmRebuild: false
+nodeGypRebuild: false
+
+# Solo el código de Electron va dentro del asar.
+files:
+  - dist/**/*
+  - windows/**/*
+  - package.json
+
+extraResources:
+  - from: ../../release/electron-resources
+    to: .
+
+win:
+  icon: resources/icon.ico
+  target:
+    - target: nsis
+      arch: [x64]
+    - target: portable
+      arch: [x64]
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: Chaos-Live
+  artifactName: Chaos-Live-Setup-${version}.exe
+  # Lo del streamer vive en %APPDATA%\Chaos-Live y no se toca al desinstalar:
+  # su historial, sus reglas, sus sonidos y su canal siguen ahí si vuelve.
+  deleteAppDataOnUninstall: false
+
+portable:
+  artifactName: Chaos-Live-${version}-portable.exe

@@ -74,6 +74,19 @@ export interface ApiContext {
    * streamer baja el volumen de un audio y en el directo sigue igual de alto.
    */
   onOverlayBroadcast?: (type: string, payload: unknown) => void;
+  /**
+   * Apagado ordenado a peticion de quien lanzo el proceso.
+   *
+   * Existe por Windows: alli no hay senales de verdad, asi que matar el proceso
+   * hijo desde la app de escritorio no ejecuta el manejador de `SIGTERM` y se
+   * pierde el apagado limpio (vaciar la cola, despedirse de la partida, cerrar
+   * la base de datos). Con esto, "Salir" apaga como lo hacia Ctrl+C en la
+   * ventana de consola del lanzador antiguo.
+   *
+   * Solo vive en la superficie de gestion, atada a localhost: no esta en
+   * `PUBLIC_READONLY_ROUTES`, asi que el puerto publico ni la conoce.
+   */
+  onShutdownRequested?: () => void;
 }
 
 /**
@@ -964,6 +977,20 @@ export async function handleApiRequest(
       context.wsHub.broadcastEvent(event);
 
       sendJson(res, 200, { success: true, event });
+      return true;
+    }
+
+    // POST /api/shutdown — apagado ordenado desde la app de escritorio
+    if (pathname === '/api/shutdown' && method === 'POST') {
+      if (!context.onShutdownRequested) {
+        sendJson(res, 404, { error: 'Este proceso no admite apagado remoto.' });
+        return true;
+      }
+
+      // Se responde antes de apagar: si no, quien lo pidio se queda esperando
+      // una respuesta que ya no va a llegar y da el apagado por fallido.
+      sendJson(res, 200, { success: true, message: 'Apagando Chaos-Live...' });
+      setTimeout(() => context.onShutdownRequested?.(), 50);
       return true;
     }
 

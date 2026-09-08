@@ -35,6 +35,7 @@ Chaos-Live transforms live-stream events (gifts, likes, follows, comments, share
 | `@chaos-live/adapter-minecraft-rcon` | Minecraft RCON game adapter (fallback when the Fabric mod is offline) |
 | `@chaos-live/overlay` | Svelte OBS overlay (Browser Source) |
 | `@chaos-live/app` | Composition root, CLI entry point, WebSocket hub |
+| `@chaos-live/desktop` | Windows application (Electron): starts and supervises the app, hosts the dashboard in its own window, tray icon, one-click Fabric mod install.<br>The only CommonJS package in the monorepo — see the note in its `package.json` |
 
 ## Prerequisites
 
@@ -118,7 +119,20 @@ npm run typecheck
 
 # Build all packages
 npm run build
+
+# Build the Windows app: installer + portable, in release/
+# Needs a JDK 17 on PATH — it compiles the Fabric mod so the app can install it
+# in one click. Add -SinMod to skip it (only to unblock yourself; the resulting
+# app makes the streamer compile the mod, which is what v2 removed).
+npm run package:windows
+
+# Just the payload, to run the app without installing it:
+#   powershell -File ./scripts/package-windows.ps1 -SoloPayload
+#   npm run dev --workspace=packages/desktop
 ```
+
+> Streamers do not build anything: they install `Chaos-Live-Setup-X.Y.Z.exe`.
+> See [the user guide](docs/USER_GUIDE.md#2-prerequisites--quick-start).
 
 ## Documentation
 

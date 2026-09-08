@@ -1,9 +1,13 @@
 ---
 name: release-windows
-description: Empaqueta la distribución de Windows de Chaos-Live (ZIP con runtime, bundle, overlay y mod) y verifica que arranca de verdad. Úsalo cuando se pida preparar, cortar o construir una release, subir de versión, o generar el ZIP para el streamer.
+description: Empaqueta la aplicación de Windows de Chaos-Live (instalador NSIS y portable, con servidor, overlay y mod dentro) y verifica que arranca de verdad. Úsalo cuando se pida preparar, cortar o construir una release, subir de versión, o generar el instalador para el streamer.
 ---
 
-# Empaquetar la release de Windows
+# Empaquetar la aplicación de Windows
+
+Desde v2.0.0 la distribución es una app de Electron, no un ZIP con `.bat`. Salen dos
+ejecutables de `release/`: `Chaos-Live-Setup-X.Y.Z.exe` (instalador NSIS) y
+`Chaos-Live-X.Y.Z-portable.exe`.
 
 ## Convención de ramas
 
@@ -12,11 +16,11 @@ No crees la rama de release por tu cuenta si el usuario ha dicho que hará él e
 
 ## Subir la versión
 
-El nombre del ZIP sale del `package.json` raíz, así que la versión hay que subirla en los 9
-`package.json` del monorepo **y** en el lockfile:
+El nombre de los ejecutables sale del `package.json` raíz, así que la versión hay que subirla en
+los **10** `package.json` del monorepo (raíz + `packages/*` + `packages/adapters/*`, incluido
+`packages/desktop`) **y** en el lockfile:
 
 ```bash
-# los 9 package.json (raíz + packages/* + packages/adapters/*)
 npm install --package-lock-only --ignore-scripts   # sincroniza package-lock.json
 ```
 
@@ -28,78 +32,94 @@ No edites `package-lock.json` a mano.
 npm run package:windows
 ```
 
-Sale `release/Chaos-Live-vX.Y.Z-Windows.zip`.
+Hace falta un **JDK 17 en el PATH**: el empaquetador compila el mod de Fabric para que la app lo
+instale en un botón. Si no lo encuentra, **falla a propósito**; `-SinMod` lo salta, pero eso
+devuelve al streamer a compilarse el mod, que es justo lo que vino a quitar v2.
 
-Verás un `NativeCommandError` de `node.exe` en PowerShell 5.1: es esbuild escribiendo su resumen
-por stderr, no un fallo. Lo que importa es la línea `[SUCCESS] Package created`.
-
-## Las dos trampas conocidas
-
-**1. El ZIP sale sin el runtime de Node.** El script solo *conserva* `bin/` si ya existe; nunca
-lo rellena. Como cada versión estrena carpeta, el ZIP sale sin `bin/node.exe` y exige que el
-streamer tenga Node instalado. Se detecta porque el ZIP pesa ~38 MB en vez de ~69 MB, y porque
-el script avisa con `[AVISO] No hay bin\node.exe`. Solución: copiar el runtime de la release
-anterior y reempaquetar.
+`-SoloPayload` se queda en `release/electron-resources` sin llamar a electron-builder. Es lo que
+hace falta para probar la app sin instalarla:
 
 ```bash
-cp release/Chaos-Live-v<anterior>-Windows/bin/node.exe release/Chaos-Live-vX.Y.Z-Windows/bin/
-npm run package:windows
+powershell -File ./scripts/package-windows.ps1 -SoloPayload
+npm run dev --workspace=packages/desktop
 ```
 
-**2. El bundle solo arranca con `NODE_ENV=production`.** Sin esa variable revienta con
-`__dirname is not defined in ES module scope` (pino-pretty acaba dentro de un bundle ESM). El
-lanzador la pone; si pruebas a mano, ponla tú. No es un fallo de la release.
+## Trampas conocidas
 
-## Verificar que arranca (no basta con que compile)
+**1. `ELECTRON_RUN_AS_NODE` en tu propio entorno.** Si la sesión desde la que lanzas Electron la
+tiene puesta (pasa cuando el agente corre dentro de Electron), `electron .` arranca como Node
+pelado: `require('electron')` devuelve una ruta y todo revienta con `Cannot read properties of
+undefined (reading 'setName')`. No es un fallo del código. Lánzalo con `env -u
+ELECTRON_RUN_AS_NODE`.
+
+**2. El proceso principal es CommonJS.** `packages/desktop` es el único paquete del monorepo que
+no es ESM, porque el cargador de Electron 33 no puede con un entry en módulos ES. Está explicado
+en su `package.json`; no lo "arregles" pasándolo a ESM.
+
+**3. electron-builder se borra su propio binario.** Al instalar dependencias de producción dentro
+de un workspace reescribe el `node_modules` de la raíz y se lleva `app-builder-bin`. Por eso
+`electron-builder.yml` lleva `npmRebuild: false`.
+
+**4. La caja de firma trae symlinks de macOS.** Extraer `winCodeSign` falla en Windows sin
+privilegios ("Cannot create symbolic link"). El script la precarga en su caché saltándose la
+carpeta `darwin`. Si borras `%LOCALAPPDATA%\electron-builder\Cache`, se rehace sola.
+
+**5. Versiones de Electron sin rango.** `packages/desktop` fija `electron` y `electron-builder` a
+versión exacta: con un rango, electron-builder no encuentra Electron (npm lo eleva a la raíz) y
+se planta con "Cannot compute electron version".
+
+**6. `NativeCommandError` en PowerShell 5.1.** Ya no debería aparecer: todas las llamadas externas
+pasan por `Invoke-Nativo`, que mira el código de salida en vez de fiarse de stderr. Si añades una
+herramienta nueva al script, métela ahí también.
+
+## Verificar que arranca (no basta con que se construya)
+
+Prueba el binario empaquetado, no solo el instalador. **Usa puertos y carpeta de datos aparte**:
+es muy habitual que el streamer tenga su Chaos-Live corriendo en 8080/8081, y no se toca.
 
 ```bash
-cd release/Chaos-Live-vX.Y.Z-Windows
-NODE_ENV=production WS_PORT=8099 OVERLAY_PORT=8098 USE_MOCK=true \
-  ./bin/node.exe app/bundle.mjs > /tmp/rel.log 2>&1 &
-sleep 12
-curl -s -o /dev/null -w "%{http_code}\n" "http://127.0.0.1:8098/?view=overlay&theme=minecraft"
+T="$TEMP/chaos-pack-test"
+rm -rf "$T"; mkdir -p "$T"
+printf 'WS_PORT=8092\r\nOVERLAY_PORT=8093\r\nUSE_MOCK=true\r\nTIKTOK_USERNAME=probador\r\n' > "$T/.env"
+env -u ELECTRON_RUN_AS_NODE ./release/win-unpacked/Chaos-Live.exe \
+  --user-data-dir="$T" --remote-debugging-port=9224 &
 ```
 
-Comprueba además, con Python y `zipfile`, que el ZIP trae `bin/node.exe`, `app/bundle.mjs`,
-`overlay/index.html` y `config/rules.json`, y que el JS del overlay dentro del ZIP coincide con
-el de `packages/overlay/dist/assets/` — si no coincide, has empaquetado un build viejo.
+Y comprueba las cuatro cosas:
 
-Para ver el HUD renderizado desde el paquete, usa la skill `overlay-preview`.
-
-## Probar la instalacion como el streamer
-
-No basta con que el ZIP se construya: hay que descomprimirlo en una carpeta
-limpia y ejecutar el instalador, porque comprueba cosas que solo fallan en un
-equipo virgen.
-
-```powershell
-$T = "$env:TEMP\chaos-instalacion-limpia"
-Remove-Item $T -Recurse -Force -ErrorAction SilentlyContinue
-New-Item -ItemType Directory -Path $T -Force | Out-Null
-tar.exe -x -f release\Chaos-Live-vX.Y.Z-Windows.zip -C $T
-"" | powershell -NoProfile -ExecutionPolicy Bypass -File "$T\Instalar-Chaos-Live.ps1"
+```bash
+curl -s http://127.0.0.1:8092/api/health                       # el servidor arrancó
+curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:8092/dashboard
+curl -s -o /dev/null -w "%{http_code}\n" "http://127.0.0.1:8093/?view=overlay"
+# y la que de verdad se rompe: que la base de datos guarde
+curl -s -X POST http://127.0.0.1:8092/api/test/event -H "Content-Type: application/json" \
+  -d '{"type":"gift","value":30,"metadata":{"giftName":"Rose"}}'
+sleep 4; curl -s "http://127.0.0.1:8092/api/history?limit=3"    # total > 0
 ```
 
-Los 7 pasos deben salir en verde salvo los avisos propios de la maquina (que no
-haya Minecraft o Java es normal en un equipo de desarrollo). El paso 7 tiene que
-confirmar las tres cosas: el servidor arranca, el overlay se sirve y **la base
-de datos guarda**.
+Se apaga con `curl -X POST http://127.0.0.1:8092/api/shutdown` (apagado ordenado; en Windows no
+hay señales, por eso existe esa ruta).
+
+Para mirar la ventana por dentro, engánchate por CDP al puerto de depuración y evalúa
+`document.body.innerText`. **`Page.captureScreenshot` no vuelve** si la ventana no está
+compuesta en pantalla; para ver el overlay renderizado, usa la skill `overlay-preview`.
 
 ## La trampa de la base de datos
 
-`config\database-template.db` la genera el empaquetador con `prisma db push`, y
-tiene que viajar en el ZIP: la distribucion no lleva la herramienta de Prisma,
-asi que el esquema no se puede crear en el PC del streamer.
+`config/database-template.db` la genera el empaquetador con `prisma db push` y viaja dentro de la
+app: la distribución no lleva la herramienta de Prisma, así que el esquema no se puede crear en el
+PC del streamer. La app la copia a `%APPDATA%\Chaos-Live\data\` la primera vez.
 
-Y el `DATABASE_URL` **tiene que ser absoluto**. Prisma resuelve un `file:./x.db`
-contra la carpeta del esquema, que queda grabada dentro del cliente generado al
-compilar y en el PC del streamer no existe. Con una ruta relativa la app arranca
-sin quejarse y no guarda una sola fila: los errores de escritura se tragan a
-proposito para no tumbar un directo. El lanzador convierte la ruta a absoluta;
-si tocas eso, comprueba el historial despues.
+Y el `DATABASE_URL` **tiene que ser absoluto**. Prisma resuelve un `file:./x.db` contra la carpeta
+del esquema, que queda grabada dentro del cliente generado al compilar y en el PC del streamer no
+existe. Con una ruta relativa la app arranca sin quejarse y no guarda una sola fila: los errores
+de escritura se tragan a propósito para no tumbar un directo. Lo pone `server-process.ts`; si
+tocas eso, comprueba el historial después.
 
 ## Antes de dar la release por buena
 
-- `npm test` en verde (17 suites).
+- `npm test` en verde (22 suites).
 - El overlay empaquetado es el build actual, no uno anterior.
-- El ZIP ronda los 69 MB.
+- Los dos `.exe` rondan los 105 MB.
+- `resources/mod/` trae el `.jar` (si no, empaquetaste con `-SinMod`).
+- Los datos del streamer siguen en `%APPDATA%\Chaos-Live` después de reinstalar.

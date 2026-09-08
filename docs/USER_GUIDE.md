@@ -47,9 +47,36 @@ Chaos-Live sits between your live streaming platform and your game:
 
 ## 2. Prerequisites & Quick Start
 
-### Prerequisites
+### For streamers: install the Windows app
+
+From v2.0.0, Chaos-Live is a normal Windows application. There is nothing to build and no
+terminal involved — **you do not need Node.js, Java or a JDK**.
+
+1. Download `Chaos-Live-Setup-2.0.0.exe` and run it.
+   Windows will show **"Windows protected your PC"** the first time. The installer is not
+   code-signed (a signing certificate costs money and there isn't one yet), so click
+   **More info → Run anyway**. There is also `Chaos-Live-2.0.0-portable.exe` if you would
+   rather carry it on a USB stick without installing.
+2. Open Chaos-Live from the Start menu. The first time it asks for two things:
+   - Your **TikTok username** (no `@`).
+   - Whether to **install the Minecraft mod** — one button. It looks for Minecraft, CurseForge,
+     Prism and Modrinth and drops the already-compiled `.jar` in the right `mods` folder.
+3. The control panel opens in the app's own window. That's it.
+
+Everything that is yours — your channel, rules, goals, sounds, history and logs — lives in
+`%APPDATA%\Chaos-Live` and **survives uninstalling and reinstalling**.
+
+Closing the window does **not** stop the stream: Chaos-Live keeps running in the system tray so
+that closing the panel by accident mid-stream cannot cut the effects. To stop it for real, use
+**Salir de Chaos-Live** in the tray icon.
+
+If a port is busy, the app says which program is holding it and offers to move to two free
+ports (remember to update the overlay links in OBS or TikTok LIVE Studio if you accept).
+
+### For developers: prerequisites
 - **Node.js:** v22+ LTS (Node 24 works out-of-the-box).
 - **Minecraft:** Java Edition 1.20.1 (Singleplayer with Fabric Loader or Dedicated Server).
+- **JDK 17:** only to build the Fabric mod, which the packaging script does for you.
 
 ### Installation
 ```bash
@@ -318,12 +345,14 @@ All commands undergo strict whitelist validation before reaching the game:
 
 With the core engine, Fabric mod, Twitch/TikTok multi-platform ingestion, OBS overlay, and management dashboard complete, here is the recommended roadmap for taking Chaos-Live to the next level:
 
-### 1. Standalone Desktop App (Electron / Tauri Packaging)
-- **Goal:** Allow streamers who don't know Node.js or the terminal to install Chaos-Live as a single `.exe` / `.dmg` application.
-- **Features:**
-  - Auto-launches the background middleware and opens the dashboard in a native desktop window.
-  - Automatic detection and installation of the Fabric mod into the local `.minecraft/mods` directory.
-  - System tray icon with one-click Emergency Pause and OBS link copy.
+### 1. ~~Standalone Desktop App~~ — shipped in v2.0.0
+Done, for Windows (`packages/desktop`): an NSIS installer and a portable `.exe`, the middleware
+started and supervised as a child process, the dashboard in its own window, the Fabric mod
+installed in one click, and a tray icon that keeps the stream alive when the window is closed.
+See §2. What is still open on this front:
+- **macOS and Linux builds.** The packaging script and the launcher paths are Windows-only today.
+- **Code signing**, so Windows stops showing the SmartScreen warning.
+- **Automatic updates** (`electron-updater`), so streamers don't have to download a new installer.
 
 ### 2. Richer In-Game Fabric Mod Features
 - **In-Game Overlay HUD:** Render current goal progress and recent top gifts directly on the Minecraft screen (top-left corner) so full-screen streamers don't need a second monitor.
